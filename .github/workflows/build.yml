@@ -1,0 +1,75 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-hap-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: 构建 HAP（debug，未签名）
+    runs-on: ubuntu-latest
+    container: ghcr.io/dalongzhuazi/harmonyos-ci:api26r
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 缓存 hvigor 与 oh_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            /root/.hvigor
+            **/oh_modules
+          key: hvigor-${{ runner.os }}-${{ hashFiles('**/oh-package-lock.json5') }}
+          restore-keys: |
+            hvigor-${{ runner.os }}-
+
+      - name: 安装依赖
+        run: ohpm install --all
+
+      - name: 构建 HAP
+        run: |
+          hvigorw clean --no-daemon
+          hvigorw assembleHap --mode module -p product=default -p buildMode=debug --no-daemon --stacktrace
+
+      - name: 收集并校验产物
+        run: |
+          set -eu
+          mkdir -p dist
+          find . -type f -name '*.hap' -path '*/outputs/*' \
+            -not -path './oh_modules/*' -not -path './node_modules/*' \
+            -exec cp -v {} dist/ \;
+          shopt -s nullglob
+          haps=(dist/*.hap)
+          if [ ${#haps[@]} -eq 0 ]; then
+            echo "::error::未产出 .hap，请检查上方构建日志"
+            exit 1
+          fi
+          for h in "${haps[@]}"; do
+            size=$(stat -c%s "$h")
+            if [ "$size" -le 0 ]; then
+              echo "::error::$h 为空文件"
+              exit 1
+            fi
+            echo "$h: $size bytes"
+          done
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: hap-unsigned
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
