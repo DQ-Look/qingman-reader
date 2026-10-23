@@ -1,0 +1,54 @@
+{
+  "routerMap": [
+    {
+      "name": "search",
+      "pageSourceFile": "src/main/ets/pages/SearchPage.ets",
+      "buildFunction": "SearchPageBuilder"
+    },
+    {
+      "name": "bookInfo",
+      "pageSourceFile": "src/main/ets/pages/BookInfoPage.ets",
+      "buildFunction": "BookInfoPageBuilder"
+    },
+    {
+      "name": "toc",
+      "pageSourceFile": "src/main/ets/pages/TocPage.ets",
+      "buildFunction": "TocPageBuilder"
+    },
+    {
+      "name": "reading",
+      "pageSourceFile": "src/main/ets/pages/ReadingPage.ets",
+      "buildFunction": "ReadingPageBuilder"
+    },
+    {
+      "name": "exploreDetail",
+      "pageSourceFile": "src/main/ets/pages/ExploreDetailPage.ets",
+      "buildFunction": "ExploreDetailPageBuilder"
+    },
+    {
+      "name": "sourceManage",
+      "pageSourceFile": "src/main/ets/pages/SourceManagePage.ets",
+      "buildFunction": "SourceManagePageBuilder"
+    },
+    {
+      "name": "sourceEdit",
+      "pageSourceFile": "src/main/ets/pages/SourceEditPage.ets",
+      "buildFunction": "SourceEditPageBuilder"
+    },
+    {
+      "name": "settings",
+      "pageSourceFile": "src/main/ets/pages/SettingsPage.ets",
+      "buildFunction": "SettingsPageBuilder"
+    },
+    {
+      "name": "comicDetail",
+      "pageSourceFile": "src/main/ets/pages/ComicDetailPage.ets",
+      "buildFunction": "ComicDetailPageBuilder"
+    },
+    {
+      "name": "comicReader",
+      "pageSourceFile": "src/main/ets/pages/ComicReaderPage.ets",
+      "buildFunction": "ComicReaderPageBuilder"
+    }
+  ]
+}

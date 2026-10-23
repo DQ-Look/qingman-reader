@@ -1,0 +1,20 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "青漫漫画阅读主模块"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "青漫漫画阅读"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "青漫"
+    },
+    {
+      "name": "pasteboard_permission_reason",
+      "value": "用于从剪贴板粘贴导入书源内容"
+    }
+  ]
+}
