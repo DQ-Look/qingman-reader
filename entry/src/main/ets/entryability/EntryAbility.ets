@@ -40,26 +40,25 @@ export default class EntryAbility extends UIAbility {
     // Main window is created, set main page for this ability
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
 
-    // 全局沉浸：启动即铺满状态栏/手势条，页面按避让区高度自适应，
-    // 避免阅读器等页面单独翻转窗口全屏导致的黑边与布局跳动。
-    // 避让区高度须在全屏生效后读取（非全屏时窗口内容不与状态栏/手势条重叠，读值为 0）
-    windowStage.getMainWindow().then((win: window.Window) => {
-      win.setWindowLayoutFullScreen(true).then(() => {
-        this.publishSafeAreaVp(win);
-      }).catch(() => {
-      });
-      win.on('avoidAreaChange', () => {
-        this.publishSafeAreaVp(win);
-      });
-    }).catch(() => {
-    });
-
     windowStage.loadContent('pages/Index', (err) => {
       if (err.code) {
         hilog.error(DOMAIN, 'testTag', 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
         return;
       }
       hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
+      // 全局沉浸：内容加载完成后再铺满状态栏/手势条（与官方示例一致的时序，
+      // 避免与 loadContent 竞态导致 NavDestination 系统标题栏渲染错位）。
+      // 避让区高度须在全屏生效后读取（非全屏时窗口内容不与状态栏/手势条重叠，读值为 0）
+      windowStage.getMainWindow().then((win: window.Window) => {
+        win.setWindowLayoutFullScreen(true).then(() => {
+          this.publishSafeAreaVp(win);
+        }).catch(() => {
+        });
+        win.on('avoidAreaChange', () => {
+          this.publishSafeAreaVp(win);
+        });
+      }).catch(() => {
+      });
     });
   }
 

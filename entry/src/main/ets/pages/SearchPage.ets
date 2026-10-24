@@ -10,6 +10,7 @@ import { BookCover } from '../components/BookCover';
 import { ComicItem, ComicParam, ComicSearchResult } from '../model/ComicApiModels';
 import { ComicApi } from '../service/ComicApi';
 import { Db } from '../service/Db';
+import { PageHeader } from '../common/PageHeader';
 
 const COMIC_PAGE_SIZE: number = 20;
 
@@ -414,6 +415,11 @@ struct SearchPage {
   build() {
     NavDestination() {
       Column() {
+        PageHeader({
+          title: '搜索',
+          pathStack: this.navPathStack,
+          textColor: this.textPrimary
+        })
         Search({ placeholder: '搜索漫画 / 书名 / 作者', value: this.keyword })
           .searchButton('搜索')
           .height(40)
@@ -541,8 +547,9 @@ struct SearchPage {
       .width('100%')
       .height('100%')
       .backgroundColor(this.bgColor)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     }
-    .title('搜索')
+    .hideTitleBar(true)
     .backgroundColor(this.bgColor)
     .onReady((ctx: NavDestinationContext) => {
       this.navPathStack = ctx.pathStack;

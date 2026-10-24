@@ -9,6 +9,7 @@ import { httpText, HttpRequestSpec, methodFromString, HttpTextResponse } from '.
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import { pasteboard } from '@kit.BasicServicesKit';
+import { PageHeader } from '../common/PageHeader';
 
 function readUriText(uri: string): string {
   const file = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY);
@@ -187,6 +188,11 @@ struct SourceManagePage {
   build() {
     NavDestination() {
       Column() {
+        PageHeader({
+          title: '书源管理',
+          pathStack: this.navPathStack,
+          textColor: this.textPrimary
+        })
         Row({ space: 8 }) {
           Button('导入')
             .fontSize(13)
@@ -320,13 +326,14 @@ struct SourceManagePage {
       .width('100%')
       .height('100%')
       .backgroundColor(this.bgColor)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       .bindSheet($$this.importSheetVisible, this.importSheetPanel(), {
         height: 240,
         dragBar: true,
         showClose: true
       })
     }
-    .title('书源管理')
+    .hideTitleBar(true)
     .backgroundColor(this.bgColor)
     .onShown(() => {
       this.refresh();

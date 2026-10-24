@@ -7,6 +7,7 @@ import { BookSourceRepo } from '../service/BookSourceRepo';
 import { BookService, ExploreCategory } from '../service/BookService';
 import { StorageKeys } from '../model/ReadConfigModels';
 import { BookCover } from '../components/BookCover';
+import { PageHeader } from '../common/PageHeader';
 
 @Component
 struct ExploreDetailPage {
@@ -81,6 +82,11 @@ struct ExploreDetailPage {
   build() {
     NavDestination() {
       Column() {
+        PageHeader({
+          title: this.source.bookSourceName,
+          pathStack: this.navPathStack,
+          textColor: this.textPrimary
+        })
         Scroll() {
           Row({ space: 8 }) {
             ForEach(this.categories, (category: ExploreCategory, index: number) => {
@@ -242,8 +248,9 @@ struct ExploreDetailPage {
       .width('100%')
       .height('100%')
       .backgroundColor(this.bgColor)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     }
-    .title(this.source.bookSourceName)
+    .hideTitleBar(true)
     .backgroundColor(this.bgColor)
     .onReady((ctx: NavDestinationContext) => {
       this.navPathStack = ctx.pathStack;

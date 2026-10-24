@@ -3,6 +3,7 @@
  */
 import { StorageKeys, APP_THEMES, READER_THEMES, AppThemePreset, ReaderTheme, applyAppColors } from '../model/ReadConfigModels';
 import { runRuleEngineTests, RuleTestResult } from '../analyze/RuleEngineTest';
+import { PageHeader } from '../common/PageHeader';
 
 const APP_VERSION: string = '1.0.0';
 
@@ -78,15 +79,11 @@ export struct SettingsPage {
 
   build() {
     Column() {
-      Row() {
-        Text('设置')
-          .fontSize(22)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(this.textPrimary)
-      }
-      .width('100%')
-      .height(56)
-      .padding({ left: 16, right: 16 })
+      PageHeader({
+        title: '设置',
+        pathStack: this.pathStack,
+        textColor: this.textPrimary
+      })
 
       Scroll() {
         Column() {
@@ -299,16 +296,22 @@ export struct SettingsPage {
     .width('100%')
     .height('100%')
     .backgroundColor(this.bgColor)
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }
 
 @Component
 struct SettingsDestinationPage {
+  navPathStack: NavPathStack = new NavPathStack();
+
   build() {
     NavDestination() {
-      SettingsPage()
+      SettingsPage({ pathStack: this.navPathStack })
     }
-    .title('设置')
+    .hideTitleBar(true)
+    .onReady((ctx: NavDestinationContext) => {
+      this.navPathStack = ctx.pathStack;
+    })
   }
 }
 

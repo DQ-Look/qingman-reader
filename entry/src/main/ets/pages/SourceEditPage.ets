@@ -5,6 +5,7 @@ import { BookSource, bookSourceFromJson, bookSourceToJson } from '../model/BookS
 import { BookSourceRepo } from '../service/BookSourceRepo';
 import { SourceEditParam } from '../model/BookModels';
 import { StorageKeys } from '../model/ReadConfigModels';
+import { PageHeader } from '../common/PageHeader';
 
 @Component
 struct SourceEditPage {
@@ -109,6 +110,11 @@ struct SourceEditPage {
   build() {
     NavDestination() {
       Column() {
+        PageHeader({
+          title: this.isNew ? '新建书源' : '编辑书源',
+          pathStack: this.navPathStack,
+          textColor: this.textPrimary
+        })
         if (this.loading) {
           Column({ space: 12 }) {
             LoadingProgress()
@@ -220,8 +226,9 @@ struct SourceEditPage {
       .width('100%')
       .height('100%')
       .backgroundColor(this.bgColor)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     }
-    .title(this.isNew ? '新建书源' : '编辑书源')
+    .hideTitleBar(true)
     .backgroundColor(this.bgColor)
     .onReady((ctx: NavDestinationContext) => {
       this.navPathStack = ctx.pathStack;

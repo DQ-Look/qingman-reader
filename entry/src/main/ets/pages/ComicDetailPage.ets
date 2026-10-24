@@ -10,6 +10,7 @@ import { ComicApi } from '../service/ComicApi';
 import { Book } from '../model/BookModels';
 import { Db } from '../service/Db';
 import { StorageKeys } from '../model/ReadConfigModels';
+import { PageHeader } from '../common/PageHeader';
 
 const CACHE_PREFIX_INFO: string = 'comic_info_';
 const CACHE_PREFIX_EPS: string = 'comic_eps_';
@@ -357,7 +358,12 @@ struct ComicDetailPage {
 
   build() {
     NavDestination() {
-      Scroll() {
+      Column() {
+        PageHeader({
+          title: this.comic.comicName === '' ? '漫画详情' : this.comic.comicName,
+          pathStack: this.navPathStack
+        })
+        Scroll() {
         Column() {
           this.infoHeader()
           this.synopsisCard()
@@ -447,8 +453,12 @@ struct ComicDetailPage {
       .width('100%')
       .scrollBar(BarState.Off)
       .backgroundColor('#F5F5F5')
+      }
+      .width('100%')
+      .height('100%')
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     }
-    .title(this.comic.comicName === '' ? '漫画详情' : this.comic.comicName)
+    .hideTitleBar(true)
     .backgroundColor('#F5F5F5')
     .onReady((ctx: NavDestinationContext) => {
       this.navPathStack = ctx.pathStack;

@@ -5,6 +5,7 @@ import { Book, Chapter, TocPageParam, ReadingPageParam } from '../model/BookMode
 import { Db } from '../service/Db';
 import { BookService } from '../service/BookService';
 import { StorageKeys } from '../model/ReadConfigModels';
+import { PageHeader } from '../common/PageHeader';
 
 export class ChapterDataSource implements IDataSource {
   private items: Chapter[] = [];
@@ -127,6 +128,11 @@ struct TocPage {
   build() {
     NavDestination() {
       Column() {
+        PageHeader({
+          title: '目录',
+          pathStack: this.navPathStack,
+          textColor: this.textPrimary
+        })
         if (this.loading) {
           Column({ space: 12 }) {
             LoadingProgress()
@@ -222,8 +228,9 @@ struct TocPage {
       .width('100%')
       .height('100%')
       .backgroundColor(this.bgColor)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     }
-    .title('目录')
+    .hideTitleBar(true)
     .backgroundColor(this.bgColor)
     .onReady((ctx: NavDestinationContext) => {
       this.navPathStack = ctx.pathStack;

@@ -9,6 +9,7 @@ import { Book, Chapter, ReadingPageParam, TocPageParam } from '../model/BookMode
 import { Db } from '../service/Db';
 import { BookService } from '../service/BookService';
 import { StorageKeys, READER_THEMES, ReaderTheme } from '../model/ReadConfigModels';
+import { PageHeader } from '../common/PageHeader';
 
 const MAX_CACHE_CHAPTERS: number = 20;
 
@@ -40,6 +41,8 @@ struct ReadingPage {
   @StorageProp(StorageKeys.COLOR_TEXT_SECONDARY) textSecondary: string = '#737373';
   /** 手势条避让高度（vp）：全局全屏后内容铺满屏幕底部，底栏/文末按钮需上移 */
   @StorageProp(StorageKeys.SAFE_AREA_BOTTOM_VP) navBarVp: number = 24;
+  /** 状态栏避让高度（vp）：hideTitleBar + expandSafeArea 后页面自标题栏起自行避让 */
+  @StorageProp(StorageKeys.SAFE_AREA_TOP_VP) statusBarVp: number = 34;
 
   readerBg(): string {
     const theme = READER_THEMES[this.readerThemeIndex];
@@ -383,6 +386,14 @@ struct ReadingPage {
         }
         .width('100%')
         .height('100%')
+        .padding({ top: this.statusBarVp + 56 })
+
+        PageHeader({
+          title: '',
+          pathStack: this.navPathStack,
+          textColor: this.readerTextColor()
+        })
+        .position({ x: 0, y: 0 })
 
         if (this.menuVisible) {
           Column() {
@@ -399,7 +410,7 @@ struct ReadingPage {
           .padding({ left: 16, right: 16 })
           .backgroundColor('#F5FFFFFF')
           .justifyContent(FlexAlign.Center)
-          .position({ x: 0, y: 0 })
+          .position({ x: 0, y: this.statusBarVp + 56 })
         }
 
         if (this.menuVisible) {
@@ -441,13 +452,14 @@ struct ReadingPage {
       .width('100%')
       .height('100%')
       .backgroundColor(this.readerBg())
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       .bindSheet($$this.settingsVisible, this.readingSettingsPanel(), {
         height: 420,
         dragBar: true,
         showClose: true
       })
     }
-    .title('')
+    .hideTitleBar(true)
     .backgroundColor(this.readerBg())
     .onReady((ctx: NavDestinationContext) => {
       this.navPathStack = ctx.pathStack;
