@@ -27,7 +27,9 @@ function readUriText(uri: string): string {
 struct SourceManagePage {
   @State sources: BookSource[] = [];
   @State loading: boolean = true;
-  @State urlInputVisible: boolean = false;
+  @State importSheetVisible: boolean = false;
+  /** 导入面板模式：0=网络链接 1=剪贴板（PasteButton 授权） */
+  @State importSheetMode: number = 0;
   @State urlInput: string = '';
   @State importing: boolean = false;
   navPathStack: NavPathStack = new NavPathStack();
@@ -108,7 +110,7 @@ struct SourceManagePage {
     spec.method = methodFromString('GET');
     httpText(url, spec).then((resp: HttpTextResponse) => {
       this.importing = false;
-      this.urlInputVisible = false;
+      this.importSheetVisible = false;
       this.importAndReport(resp.body);
     }).catch((e: Error) => {
       this.importing = false;
@@ -318,7 +320,7 @@ struct SourceManagePage {
       .width('100%')
       .height('100%')
       .backgroundColor(this.bgColor)
-      .bindSheet($$this.urlInputVisible, this.urlImportPanel(), {
+      .bindSheet($$this.importSheetVisible, this.importSheetPanel(), {
         height: 240,
         dragBar: true,
         showClose: true
@@ -344,13 +346,15 @@ struct SourceManagePage {
           title: '从网络链接导入',
           action: () => {
             this.urlInput = '';
-            this.urlInputVisible = true;
+            this.importSheetMode = 0;
+            this.importSheetVisible = true;
           }
         },
         {
           title: '从剪贴板导入',
           action: () => {
-            this.importFromClipboard();
+            this.importSheetMode = 1;
+            this.importSheetVisible = true;
           }
         },
         {
@@ -382,6 +386,44 @@ struct SourceManagePage {
         }
       ]
     });
+  }
+
+  @Builder
+  importSheetPanel() {
+    if (this.importSheetMode === 1) {
+      this.clipImportPanel()
+    } else {
+      this.urlImportPanel()
+    }
+  }
+
+  /**
+   * 剪贴板导入面板：PasteButton 安全控件，点击授权后读取剪贴板（免 READ_PASTEBOARD 权限）
+   */
+  @Builder
+  clipImportPanel() {
+    Column({ space: 16 }) {
+      Text('从剪贴板导入书源')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(this.textPrimary)
+        .width('100%')
+      Text('先复制书源 JSON，再点击下方粘贴按钮完成导入')
+        .fontSize(13)
+        .fontColor(this.textSecondary)
+        .width('100%')
+      PasteButton()
+        .padding({ top: 12, bottom: 12, left: 24, right: 24 })
+        .onClick((event: ClickEvent, result: PasteButtonOnClickResult) => {
+          if (result === PasteButtonOnClickResult.SUCCESS) {
+            this.importSheetVisible = false;
+            this.importFromClipboard();
+          }
+        })
+    }
+    .padding(24)
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
   }
 
   @Builder
