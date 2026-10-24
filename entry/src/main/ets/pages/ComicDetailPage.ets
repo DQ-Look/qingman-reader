@@ -26,6 +26,7 @@ struct ComicDetailPage {
   @State synopsisExpanded: boolean = false;
   @State onShelf: boolean = false;
   @State savedEpisodeIndex: number = -1;
+  @State savedPage: number = 0;
   navPathStack: NavPathStack = new NavPathStack();
 
   /**
@@ -99,13 +100,16 @@ struct ComicDetailPage {
       if (saved !== null) {
         this.onShelf = true;
         this.savedEpisodeIndex = saved.durChapterIndex;
+        this.savedPage = saved.durChapterPos > 0 ? Math.floor(saved.durChapterPos) : 0;
       } else {
         this.onShelf = false;
         this.savedEpisodeIndex = -1;
+        this.savedPage = 0;
       }
     }).catch(() => {
       this.onShelf = false;
       this.savedEpisodeIndex = -1;
+      this.savedPage = 0;
     });
   }
 
@@ -174,15 +178,16 @@ struct ComicDetailPage {
   }
 
   openReader(ep: ComicEpisode): void {
-    this.openReaderAt(this.episodeIndex(ep));
+    this.openReaderAt(this.episodeIndex(ep), 0);
   }
 
-  openReaderAt(index: number): void {
+  openReaderAt(index: number, page: number): void {
     const p: ComicReaderParam = new ComicReaderParam();
     p.comicId = this.comic.comicId;
     p.comicName = this.comic.comicName;
     p.episodes = this.episodes;
     p.startIndex = index;
+    p.startPage = page;
     this.navPathStack.pushPathByName('comicReader', p);
   }
 
@@ -191,10 +196,12 @@ struct ComicDetailPage {
       return;
     }
     let idx: number = 0;
+    let page: number = 0;
     if (this.onShelf && this.savedEpisodeIndex >= 0 && this.savedEpisodeIndex < this.episodes.length) {
       idx = this.savedEpisodeIndex;
+      page = this.savedPage;
     }
-    this.openReaderAt(idx);
+    this.openReaderAt(idx, page);
   }
 
   readButtonLabel(): string {

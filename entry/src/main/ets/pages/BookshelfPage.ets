@@ -111,7 +111,10 @@ export struct BookshelfPage {
 
   progressText(book: Book): string {
     const diff: number = this.updateCount(book);
-    const base: string = book.durChapterTitle !== '' ? '读到：' + book.durChapterTitle : '未开始阅读';
+    let base: string = book.durChapterTitle !== '' ? '读到：' + book.durChapterTitle : '未开始阅读';
+    if (book.durChapterPos > 0) {
+      base += ' · 第' + (Math.floor(book.durChapterPos) + 1) + '页';
+    }
     if (diff > 0) {
       return '更新' + (diff > 99 ? '99+' : diff) + '话 · ' + base;
     }
@@ -144,6 +147,7 @@ export struct BookshelfPage {
     p.comicName = book.name;
     p.episodes = [];
     p.startIndex = startIndex;
+    p.startPage = book.durChapterPos > 0 ? Math.floor(book.durChapterPos) : 0;
     this.pathStack.pushPathByName('comicReader', p);
   }
 

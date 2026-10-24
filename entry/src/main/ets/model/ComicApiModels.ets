@@ -174,6 +174,8 @@ export class ComicReaderParam {
   comicName: string = '';
   episodes: ComicEpisode[] = [];
   startIndex: number = 0;
+  /** 续读起始页（章节内图片索引，从 0 开始） */
+  startPage: number = 0;
 }
 
 /**
