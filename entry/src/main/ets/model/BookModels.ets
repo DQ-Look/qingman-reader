@@ -15,6 +15,8 @@ export class Book {
   durChapterIndex: number = 0;
   durChapterTitle: string = '';
   durChapterPos: number = 0;
+  /** 已查看确认的目录章节数（-1 表示尚未确认过，回退按阅读进度比对） */
+  seenTocCount: number = -1;
   groupName: string = '';
   customOrder: number = 0;
   lastRead: number = 0;

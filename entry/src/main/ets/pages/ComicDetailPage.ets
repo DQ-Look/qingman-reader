@@ -92,7 +92,26 @@ struct ComicDetailPage {
   applyEpisodes(eps: ComicEpisode[]): void {
     eps.sort((a: ComicEpisode, b: ComicEpisode): number => a.episodeNum - b.episodeNum);
     this.episodes = eps;
+    this.markTocSeen(eps.length);
     this.applySort();
+  }
+
+  /**
+   * 查看目录即确认更新：回写已确认目录数，仅在变化时刷新书架，清除/更新角标
+   */
+  markTocSeen(count: number): void {
+    const url: string = COMIC_BOOK_URL_PREFIX + this.brief.comicId;
+    const db: Db = Db.getInstance();
+    db.getBook(url).then((saved: Book | null) => {
+      if (saved === null || saved.seenTocCount >= count) {
+        return;
+      }
+      return db.updateSeenTocCount(url, count).then(() => {
+        AppStorage.setOrCreate<number>(StorageKeys.BOOKSHELF_VERSION,
+          (AppStorage.get<number>(StorageKeys.BOOKSHELF_VERSION) ?? 0) + 1);
+      });
+    }).catch(() => {
+    });
   }
 
   checkShelf(): void {

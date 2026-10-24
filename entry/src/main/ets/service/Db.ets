@@ -20,6 +20,7 @@ const CREATE_BOOK_SQL: string = `CREATE TABLE IF NOT EXISTS book (
   durChapterIndex INTEGER DEFAULT 0,
   durChapterTitle TEXT DEFAULT '',
   durChapterPos REAL DEFAULT 0,
+  seenTocCount INTEGER DEFAULT -1,
   groupName TEXT DEFAULT '',
   customOrder INTEGER DEFAULT 0,
   lastRead INTEGER DEFAULT 0,
@@ -48,8 +49,8 @@ const CREATE_KV_CACHE_SQL: string = `CREATE TABLE IF NOT EXISTS kv_cache (
 )`;
 
 const BOOK_COLUMNS: string = 'bookUrl, name, author, origin, originName, coverUrl, intro, kind, ' +
-  'latestChapterTitle, tocUrl, durChapterIndex, durChapterTitle, durChapterPos, groupName, ' +
-  'customOrder, lastRead, variable';
+  'latestChapterTitle, tocUrl, durChapterIndex, durChapterTitle, durChapterPos, seenTocCount, ' +
+  'groupName, customOrder, lastRead, variable';
 
 function rsString(rs: relationalStore.ResultSet, col: string): string {
   const idx: number = rs.getColumnIndex(col);
@@ -90,6 +91,7 @@ function bookFromRow(rs: relationalStore.ResultSet): Book {
   b.durChapterIndex = rsNumber(rs, 'durChapterIndex');
   b.durChapterTitle = rsString(rs, 'durChapterTitle');
   b.durChapterPos = rsDouble(rs, 'durChapterPos');
+  b.seenTocCount = rsNumber(rs, 'seenTocCount');
   b.groupName = rsString(rs, 'groupName');
   b.customOrder = rsNumber(rs, 'customOrder');
   b.lastRead = rsNumber(rs, 'lastRead');
@@ -131,6 +133,12 @@ export class Db {
     await this.store.executeSql(CREATE_CHAPTER_SQL);
     await this.store.executeSql(CREATE_SEARCH_HISTORY_SQL);
     await this.store.executeSql(CREATE_KV_CACHE_SQL);
+    // 老库迁移：补充 seenTocCount 列（已存在时忽略）
+    try {
+      await this.store.executeSql('ALTER TABLE book ADD COLUMN seenTocCount INTEGER DEFAULT -1');
+    } catch (e) {
+      // 列已存在，无需处理
+    }
   }
 
   async getShelfBooks(): Promise<Book[]> {
@@ -160,11 +168,17 @@ export class Db {
   async saveBook(book: Book): Promise<void> {
     const store = await this.ready();
     await store.executeSql(
-      'INSERT OR REPLACE INTO book (' + BOOK_COLUMNS + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT OR REPLACE INTO book (' + BOOK_COLUMNS + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [book.bookUrl, book.name, book.author, book.origin, book.originName, book.coverUrl,
         book.intro, book.kind, book.latestChapterTitle, book.tocUrl, book.durChapterIndex,
-        book.durChapterTitle, book.durChapterPos, book.groupName, book.customOrder,
-        book.lastRead, book.variable]);
+        book.durChapterTitle, book.durChapterPos, book.seenTocCount, book.groupName,
+        book.customOrder, book.lastRead, book.variable]);
+  }
+
+  async updateSeenTocCount(bookUrl: string, seenTocCount: number): Promise<void> {
+    const store = await this.ready();
+    await store.executeSql('UPDATE book SET seenTocCount = ? WHERE bookUrl = ?',
+      [seenTocCount, bookUrl]);
   }
 
   async updateBookProgress(bookUrl: string, durChapterIndex: number,

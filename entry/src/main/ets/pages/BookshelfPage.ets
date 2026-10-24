@@ -58,13 +58,17 @@ export struct BookshelfPage {
   }
 
   /**
-   * 已读漫画：最新目录章节数多于已读进度（durChapterIndex+1）视为有更新
+   * 更新角标：目录数多于「已确认目录数」视为有更新；
+   * 未确认过（seenTocCount < 0，老数据）回退按阅读进度比对
    */
   updateDiff(book: Book, eps: ComicEpisode[]): number {
-    if (book.durChapterTitle === '' || book.durChapterIndex < 0) {
-      return 0;
+    let seen: number = book.seenTocCount;
+    if (seen < 0) {
+      if (book.durChapterTitle === '' || book.durChapterIndex < 0) {
+        return 0;
+      }
+      seen = book.durChapterIndex + 1;
     }
-    const seen: number = book.durChapterIndex + 1;
     return eps.length > seen ? eps.length - seen : 0;
   }
 
