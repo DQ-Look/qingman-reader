@@ -7,7 +7,7 @@
  * 数据源：App API（comic/episode/images/{episodeId}）
  */
 import {
-  ComicEpisode, ComicEpisodeImage, ComicReaderParam, COMIC_BOOK_URL_PREFIX,
+  ComicEpisode, ComicEpisodeImage, ComicReaderParam, ComicParam, COMIC_BOOK_URL_PREFIX,
   parseEpisodeImages, parseEpisodeList, CACHE_PREFIX_EPS, CACHE_PREFIX_IMGS,
   imagesFresh, episodesFresh
 } from '../model/ComicApiModels';
@@ -99,6 +99,9 @@ struct ComicReaderPage {
   private pendingStartPage: number = 0;
   private startPageUsed: boolean = false;
   private lastProgressSaveAt: number = 0;
+  /** 状态栏/手势条避让高度（vp），由 EntryAbility 全局全屏后发布，随避让区变化刷新 */
+  @StorageProp(StorageKeys.SAFE_AREA_TOP_VP) statusBarVp: number = 34;
+  @StorageProp(StorageKeys.SAFE_AREA_BOTTOM_VP) navBarVp: number = 24;
   /** 智慧手势（眼动/敲一敲/划一划翻页）控制器 */
   private smartGesture: SmartGestureController | undefined = undefined;
   /** 智慧手势监听：阅读器可交互时消费手势，沿用系统默认翻页动作 */
@@ -531,6 +534,15 @@ struct ComicReaderPage {
     return '第' + ep.episodeNum + '话';
   }
 
+  /** 顶栏「详情」：跳转漫画详情页（可查看信息/管理书架收藏） */
+  openDetail(): void {
+    const p: ComicParam = new ComicParam();
+    p.comicId = this.param.comicId;
+    p.comicName = this.param.comicName;
+    p.picUrl = '';
+    this.navPathStack.pushPathByName('comicDetail', p);
+  }
+
   @Builder
   topBar() {
     Row({ space: 8 }) {
@@ -564,9 +576,16 @@ struct ComicReaderPage {
             this.stopAutoScroll();
           })
       }
+      Text('详情')
+        .fontSize(13)
+        .fontColor('#FFFFFF')
+        .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+        .onClick(() => {
+          this.openDetail();
+        })
     }
     .width('100%')
-    .padding({ top: 42, bottom: 10, left: 14, right: 14 })
+    .padding({ top: this.statusBarVp + 6, bottom: 10, left: 14, right: 14 })
     .backgroundColor('#99000000')
     .alignItems(VerticalAlign.Center)
   }
@@ -641,7 +660,7 @@ struct ComicReaderPage {
       .alignItems(VerticalAlign.Center)
     }
     .width('100%')
-    .padding({ left: 14, right: 14, top: 12, bottom: 28 })
+    .padding({ left: 14, right: 14, top: 12, bottom: Math.max(this.navBarVp + 6, 28) })
     .backgroundColor('#99000000')
   }
 

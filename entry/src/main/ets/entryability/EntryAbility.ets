@@ -15,8 +15,9 @@
 
 import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { window } from '@kit.ArkUI';
+import { display, window } from '@kit.ArkUI';
 import { AppContextHolder } from '../common/AppContextHolder';
+import { StorageKeys } from '../model/ReadConfigModels';
 
 const DOMAIN = 0x0000;
 
@@ -39,6 +40,20 @@ export default class EntryAbility extends UIAbility {
     // Main window is created, set main page for this ability
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
 
+    // 全局沉浸：启动即铺满状态栏/手势条，页面按避让区高度自适应，
+    // 避免阅读器等页面单独翻转窗口全屏导致的黑边与布局跳动。
+    // 避让区高度须在全屏生效后读取（非全屏时窗口内容不与状态栏/手势条重叠，读值为 0）
+    windowStage.getMainWindow().then((win: window.Window) => {
+      win.setWindowLayoutFullScreen(true).then(() => {
+        this.publishSafeAreaVp(win);
+      }).catch(() => {
+      });
+      win.on('avoidAreaChange', () => {
+        this.publishSafeAreaVp(win);
+      });
+    }).catch(() => {
+    });
+
     windowStage.loadContent('pages/Index', (err) => {
       if (err.code) {
         hilog.error(DOMAIN, 'testTag', 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
@@ -46,6 +61,22 @@ export default class EntryAbility extends UIAbility {
       }
       hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
     });
+  }
+
+  /** 状态栏/手势条避让高度（vp）写入 AppStorage，供各页 @StorageProp 订阅 */
+  private publishSafeAreaVp(win: window.Window): void {
+    try {
+      const density: number = display.getDefaultDisplaySync().densityPixels;
+      if (density <= 0) {
+        return;
+      }
+      const sys: window.AvoidArea = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+      const nav: window.AvoidArea = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+      AppStorage.setOrCreate<number>(StorageKeys.SAFE_AREA_TOP_VP, sys.topRect.height / density);
+      AppStorage.setOrCreate<number>(StorageKeys.SAFE_AREA_BOTTOM_VP, nav.bottomRect.height / density);
+    } catch (err) {
+      hilog.error(DOMAIN, 'testTag', 'Failed to publish safe area. Cause: %{public}s', JSON.stringify(err));
+    }
   }
 
   onWindowStageDestroy(): void {

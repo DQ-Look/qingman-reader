@@ -12,6 +12,8 @@ export class StorageKeys {
   static readonly BOOKSHELF_VERSION: string = 'qm.bookshelfVersion';
   static readonly READ_TARGET_INDEX: string = 'qm.readTarget.index';
   static readonly READ_TARGET_VERSION: string = 'qm.readTarget.version';
+  static readonly SAFE_AREA_TOP_VP: string = 'qm.safeArea.topVp';
+  static readonly SAFE_AREA_BOTTOM_VP: string = 'qm.safeArea.bottomVp';
   static readonly COLOR_PRIMARY: string = 'qm.color.primary';
   static readonly COLOR_ACCENT: string = 'qm.color.accent';
   static readonly COLOR_BACKGROUND: string = 'qm.color.background';

@@ -38,6 +38,8 @@ struct ReadingPage {
   @StorageProp(StorageKeys.COLOR_ACCENT) colorAccent: string = '#E53935';
   @StorageProp(StorageKeys.COLOR_TEXT_PRIMARY) textPrimary: string = '#212121';
   @StorageProp(StorageKeys.COLOR_TEXT_SECONDARY) textSecondary: string = '#737373';
+  /** 手势条避让高度（vp）：全局全屏后内容铺满屏幕底部，底栏/文末按钮需上移 */
+  @StorageProp(StorageKeys.SAFE_AREA_BOTTOM_VP) navBarVp: number = 24;
 
   readerBg(): string {
     const theme = READER_THEMES[this.readerThemeIndex];
@@ -366,7 +368,7 @@ struct ReadingPage {
                   }
                   .width('100%')
                   .justifyContent(FlexAlign.Center)
-                  .padding({ top: 16, bottom: 40 })
+                  .padding({ top: 16, bottom: 40 + this.navBarVp })
                 }
                 .padding({ left: 20, right: 20 })
               }
@@ -432,8 +434,8 @@ struct ReadingPage {
           .width('100%')
           .backgroundColor('#F5FFFFFF')
           .position({ x: 0, y: '100%' })
-          .translate({ y: -48 })
-          .markAnchor({ y: -48 })
+          .translate({ y: -(48 + this.navBarVp) })
+          .markAnchor({ y: -(48 + this.navBarVp) })
         }
       }
       .width('100%')

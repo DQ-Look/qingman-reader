@@ -23,6 +23,8 @@ struct ExploreDetailPage {
   @StorageProp(StorageKeys.COLOR_PRIMARY) colorPrimary: string = '#795548';
   @StorageProp(StorageKeys.COLOR_TEXT_PRIMARY) textPrimary: string = '#212121';
   @StorageProp(StorageKeys.COLOR_TEXT_SECONDARY) textSecondary: string = '#737373';
+  /** 手势条避让高度（vp）：全局全屏后内容铺满屏幕底部，底部翻页栏需上移 */
+  @StorageProp(StorageKeys.SAFE_AREA_BOTTOM_VP) navBarVp: number = 24;
   @StorageProp(StorageKeys.COLOR_DIVIDER) dividerColor: string = '#E5E5E5';
 
   init(): void {
@@ -230,7 +232,8 @@ struct ExploreDetailPage {
                 })
             }
             .width('100%')
-            .height(52)
+            .height(52 + this.navBarVp)
+            .padding({ bottom: this.navBarVp })
             .justifyContent(FlexAlign.Center)
             .alignItems(VerticalAlign.Center)
           }
