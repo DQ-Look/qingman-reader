@@ -27,6 +27,7 @@ struct Index {
     PersistentStorage.persistProp(StorageKeys.BOOKSHELF_VERSION, 0);
     PersistentStorage.persistProp(StorageKeys.READ_TARGET_INDEX, -1);
     PersistentStorage.persistProp(StorageKeys.READ_TARGET_VERSION, 0);
+    PersistentStorage.persistProp(StorageKeys.DEVICE_ID, '');
   }
 
   build() {

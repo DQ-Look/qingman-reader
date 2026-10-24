@@ -52,6 +52,9 @@ export struct CategoryTabPage {
   @State refreshing: boolean = false;
   private regionIds: string[] = ['', '', ''];
   private comicsPage: number = 1;
+  /** 组合筛选（题材+地区）下的服务端原始页码与耗尽标记 */
+  private rawPage: number = 1;
+  @State rawExhausted: boolean = false;
 
   aboutToAppear(): void {
     this.loadSources();
@@ -194,6 +197,8 @@ export struct CategoryTabPage {
 
   reloadComics(clearFirst: boolean): void {
     this.comicsPage = 1;
+    this.rawPage = 1;
+    this.rawExhausted = false;
     this.comicsFailed = '';
     if (clearFirst) {
       this.comics = [];
@@ -207,6 +212,9 @@ export struct CategoryTabPage {
       const result: ComicSearchResult = parseSearchResult(raw);
       let list: ComicItem[] = result.comics;
       if (combined) {
+        if (result.comics.length < COMBINED_FETCH_SIZE) {
+          this.rawExhausted = true;
+        }
         list = this.filterByRegion(list);
       }
       this.comics = list;
@@ -227,8 +235,17 @@ export struct CategoryTabPage {
   }
 
   loadMoreComics(): void {
-    if (this.loadingMore || this.isCombined() || this.comics.length === 0 ||
-      this.comics.length >= this.comicsTotal) {
+    if (this.loadingMore || this.comics.length === 0) {
+      return;
+    }
+    if (this.isCombined()) {
+      if (this.rawExhausted) {
+        return;
+      }
+      this.fetchCombinedMore();
+      return;
+    }
+    if (this.comics.length >= this.comicsTotal) {
       return;
     }
     this.comicsPage += 1;
@@ -242,6 +259,56 @@ export struct CategoryTabPage {
       this.comicsPage -= 1;
       this.loadingMore = false;
     });
+  }
+
+  /**
+   * 组合筛选分页：继续拉下一批服务端原始数据（每批 100 条），本地按地区过滤追加；
+   * 本批过滤后为空且原始数据未耗尽时自动续拉下一批
+   */
+  fetchCombinedMore(): void {
+    this.loadingMore = true;
+    this.rawPage += 1;
+    const categoryId: string = this.currentCategoryId();
+    ComicApi.getInstance().browseComicsRaw(this.rawPage, COMBINED_FETCH_SIZE,
+      SORT_FIELDS[this.selSort], this.selProgress, categoryId).then((raw: string) => {
+      const result: ComicSearchResult = parseSearchResult(raw);
+      if (result.comics.length < COMBINED_FETCH_SIZE) {
+        this.rawExhausted = true;
+      }
+      const filtered: ComicItem[] = this.filterByRegion(result.comics);
+      if (filtered.length > 0) {
+        const seen: Set<string> = new Set<string>();
+        for (let i = 0; i < this.comics.length; i++) {
+          seen.add(this.comics[i].comicId);
+        }
+        const merged: ComicItem[] = this.comics.slice();
+        for (let i = 0; i < filtered.length; i++) {
+          if (!seen.has(filtered[i].comicId)) {
+            merged.push(filtered[i]);
+          }
+        }
+        this.comics = merged;
+        this.comicsTotal = merged.length;
+        this.loadingMore = false;
+      } else if (!this.rawExhausted) {
+        this.fetchCombinedMore();
+      } else {
+        this.loadingMore = false;
+      }
+    }).catch(() => {
+      this.rawPage -= 1;
+      this.loadingMore = false;
+    });
+  }
+
+  /**
+   * 列表是否已无更多数据（普通筛选看 total，组合筛选看原始数据是否耗尽）
+   */
+  noMoreComics(): boolean {
+    if (this.isCombined()) {
+      return this.rawExhausted;
+    }
+    return this.comics.length >= this.comicsTotal;
   }
 
   /**
@@ -587,7 +654,7 @@ export struct CategoryTabPage {
                     .fontColor('#999999')
                 }
                 .padding({ top: 14, bottom: 14 })
-              } else if (this.comics.length >= this.comicsTotal) {
+              } else if (this.noMoreComics()) {
                 Text('没有更多了')
                   .fontSize(12)
                   .fontColor('#BBBBBB')

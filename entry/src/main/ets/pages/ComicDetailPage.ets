@@ -1,6 +1,6 @@
 /**
  * 漫画详情页：信息 + 章节目录（正/倒序切换）
- * 数据源：mihumh.com 同源代理（info/{comicId} + list/{comicId}）
+ * 数据源：App API（comic/info/{comicId} + comic/episode/list/{comicId}）
  */
 import {
   ComicItem, ComicParam, ComicEpisode, ComicReaderParam, COMIC_BOOK_URL_PREFIX,

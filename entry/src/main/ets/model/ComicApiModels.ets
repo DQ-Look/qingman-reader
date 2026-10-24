@@ -1,6 +1,6 @@
 /**
- * 漫画官网数据模型（mihumh.com/api/upstream/website/comic/*）
- * 与原版 App API（ComicListBean 系列）同源数据，字段名一致
+ * 漫画 App API 数据模型（api.mihumh.xyz/api/app/*）
+ * 与 App 端（ComicListBean 系列）同源数据，字段名一致
  */
 
 /** 章节目录 kv_cache 前缀（key = 前缀 + comicId） */
@@ -252,7 +252,7 @@ function parseHomeSection(raw: RawHomeSection): ComicHomeSection {
 }
 
 /**
- * 解析 getGuaziWebsiteHomeData 响应（{code,success,data:[{title,comicList}]}）
+ * 解析 comic/getAppHomeData 响应（{code,success,data:[{title,comicList}]}）
  */
 export function parseHomeData(jsonStr: string): ComicHomeSection[] {
   const parsed: Object = JSON.parse(jsonStr) as Object;
@@ -286,20 +286,26 @@ export function parseComicInfo(jsonStr: string): ComicItem {
 }
 
 /**
- * 解析 data 为漫画数组类的响应（如 getWebsiteLastComicList）
+ * 解析 data 为漫画数组类的响应（如旧缓存 getWebsiteLastComicList 的裸数组）；
+ * 也兼容 data 为 {total, list:[漫画]} 的分页结构（如 comic/recent）
  */
 export function parseComicList(jsonStr: string): ComicItem[] {
-  return parseComicArrayFromData(jsonStr);
-}
-
-function parseComicArrayFromData(jsonStr: string): ComicItem[] {
   const parsed: Object = JSON.parse(jsonStr) as Object;
   const resp: RawBaseResponse = parsed as RawBaseResponse;
   const data: Object | undefined = resp.data;
-  if (data === undefined || !Array.isArray(data)) {
+  if (data === undefined) {
     return [];
   }
-  return parseComicArray(data as Object[]);
+  if (Array.isArray(data)) {
+    return parseComicArray(data as Object[]);
+  }
+  if (typeof data === 'object' && data !== null) {
+    const page: RawPagedData = data as RawPagedData;
+    if (page.list !== undefined && Array.isArray(page.list)) {
+      return parseComicArray(page.list);
+    }
+  }
+  return [];
 }
 
 /**
@@ -320,7 +326,7 @@ export function parseSearchResult(jsonStr: string): ComicSearchResult {
 }
 
 /**
- * 解析 getWebsiteComicCategoryList 分类列表响应（data 为 [{categoryId, categoryName}]）
+ * 解析 comic/getAppComicCategoryList 分类列表响应（data 为 [{categoryId, categoryName}]）
  */
 export function parseCategoryList(jsonStr: string): ComicCategory[] {
   const parsed: Object = JSON.parse(jsonStr) as Object;

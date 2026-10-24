@@ -1,6 +1,6 @@
 /**
  * 漫画阅读器：当前章节图片纵向滚动阅读，支持上一话/下一话切换
- * 数据源：mihumh.com 同源代理（images/{episodeId}）
+ * 数据源：App API（comic/episode/images/{episodeId}）
  */
 import {
   ComicEpisode, ComicEpisodeImage, ComicReaderParam, COMIC_BOOK_URL_PREFIX,
@@ -157,6 +157,11 @@ struct ComicReaderPage {
   applyImages(imgs: ComicEpisodeImage[]): void {
     this.images = imgs;
     this.loading = false;
+    if (imgs.length === 0) {
+      // 避免静默渲染空 List 导致黑屏
+      this.failedMsg = '本章节暂无图片';
+      return;
+    }
     this.chromeVisible = false;
     if (!this.scrolledForEpisode) {
       this.scrolledForEpisode = true;

@@ -9,11 +9,12 @@ import { BookSourceRepo } from '../../service/BookSourceRepo';
 import { BookService, ExploreCategory } from '../../service/BookService';
 import { StorageKeys } from '../../model/ReadConfigModels';
 import { BookCover } from '../../components/BookCover';
-import { ComicHomeSection, ComicItem, ComicParam, parseHomeData, parseComicList } from '../../model/ComicApiModels';
+import { ComicHomeSection, ComicItem, ComicParam, ComicSearchResult, parseHomeData, parseComicList, parseSearchResult } from '../../model/ComicApiModels';
 import { ComicApi } from '../../service/ComicApi';
 
 const CACHE_KEY_HOME: string = 'home_data';
 const CACHE_KEY_UPDATE: string = 'update_comics';
+const UPDATE_PAGE_SIZE: number = 30;
 
 class ComicSection {
   title: string = '';
@@ -35,6 +36,9 @@ export struct HomeTabPage {
   @State apiFailed: boolean = false;
   @State apiError: string = '';
   @State updateComics: ComicItem[] = [];
+  @State updateTotal: number = 0;
+  @State updatePage: number = 0;
+  @State updateLoadingMore: boolean = false;
   @State updateLoading: boolean = false;
   @State updateRequested: boolean = false;
   @State updateFailed: string = '';
@@ -217,6 +221,8 @@ export struct HomeTabPage {
         const list: ComicItem[] = parseComicList(raw);
         if (list.length > 0) {
           this.updateComics = list;
+          this.updatePage = 1;
+          this.updateTotal = 0;
           this.updateLoading = false;
         }
       }
@@ -231,11 +237,13 @@ export struct HomeTabPage {
       this.updateLoading = true;
     }
     this.updateFailed = '';
-    ComicApi.getInstance().getLastComicsRaw(1, 30).then((raw: string) => {
-      const list: ComicItem[] = parseComicList(raw);
-      this.updateComics = list;
+    ComicApi.getInstance().getLastComicsRaw(1, UPDATE_PAGE_SIZE).then((raw: string) => {
+      const res: ComicSearchResult = parseSearchResult(raw);
+      this.updateComics = res.comics;
+      this.updateTotal = res.total;
+      this.updatePage = 1;
       this.updateLoading = false;
-      if (list.length > 0) {
+      if (res.comics.length > 0) {
         Db.getInstance().setCache(CACHE_KEY_UPDATE, raw).catch(() => {
         });
       }
@@ -244,6 +252,37 @@ export struct HomeTabPage {
         this.updateFailed = e.message;
       }
       this.updateLoading = false;
+    });
+  }
+
+  /**
+   * 更新列表分页加载：按 comicId 去重后追加下一页
+   */
+  loadMoreUpdateComics(): void {
+    if (this.updateLoading || this.updateLoadingMore || this.updateFailed !== '' || this.updateComics.length === 0) {
+      return;
+    }
+    if (this.updateTotal > 0 && this.updateComics.length >= this.updateTotal) {
+      return;
+    }
+    this.updateLoadingMore = true;
+    ComicApi.getInstance().getRecentComics(this.updatePage + 1, UPDATE_PAGE_SIZE).then((res: ComicSearchResult) => {
+      const seen: Set<string> = new Set<string>();
+      const merged: ComicItem[] = this.updateComics.slice();
+      for (let i = 0; i < merged.length; i++) {
+        seen.add(merged[i].comicId);
+      }
+      for (let i = 0; i < res.comics.length; i++) {
+        if (!seen.has(res.comics[i].comicId)) {
+          merged.push(res.comics[i]);
+        }
+      }
+      this.updateComics = merged;
+      this.updateTotal = res.total;
+      this.updatePage += 1;
+      this.updateLoadingMore = false;
+    }).catch(() => {
+      this.updateLoadingMore = false;
     });
   }
 
@@ -790,15 +829,43 @@ export struct HomeTabPage {
               this.updateComicRow(comic)
             }
           }, (comic: ComicItem): string => comic.comicId + '_' + comic.updateTime)
+          ListItem() {
+            this.updateFooter()
+          }
         }
         .layoutWeight(1)
         .width('100%')
         .padding({ left: 12, right: 12, bottom: 88 })
         .scrollBar(BarState.Off)
+        .onReachEnd(() => {
+          this.loadMoreUpdateComics();
+        })
       }
     }
     .width('100%')
     .height('100%')
+  }
+
+  @Builder
+  updateFooter() {
+    Row({ space: 8 }) {
+      if (this.updateLoadingMore) {
+        LoadingProgress()
+          .width(18)
+          .height(18)
+          .color('#6C5CE7')
+        Text('正在加载...')
+          .fontSize(12)
+          .fontColor('#999999')
+      } else {
+        Text(this.updateTotal > 0 && this.updateComics.length >= this.updateTotal ? '已全部加载' : '上拉加载更多')
+          .fontSize(12)
+          .fontColor('#999999')
+      }
+    }
+    .width('100%')
+    .justifyContent(FlexAlign.Center)
+    .padding({ top: 12, bottom: 12 })
   }
 
   @Builder

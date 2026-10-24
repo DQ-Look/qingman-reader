@@ -20,6 +20,7 @@ export class StorageKeys {
   static readonly COLOR_TEXT_SECONDARY: string = 'qm.color.textSecondary';
   static readonly COLOR_DIVIDER: string = 'qm.color.divider';
   static readonly COMIC_BASE_URL: string = 'qm.api.baseUrl';
+  static readonly DEVICE_ID: string = 'qm.api.deviceId';
 }
 
 export class ReaderTheme {
