@@ -66,7 +66,9 @@ struct Index {
         systemMaterialEffect: {
           materialType: hdsMaterial.MaterialType.IMMERSIVE,
           materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-        }
+        },
+        // 悬浮页签整体上抬，避开底部手势指示条，不再贴住屏幕底边
+        barBottomMargin: 16
       })
       .width('100%')
       .height('100%')

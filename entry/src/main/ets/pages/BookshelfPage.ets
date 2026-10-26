@@ -24,6 +24,7 @@ export struct BookshelfPage {
   @StorageProp(StorageKeys.COLOR_ACCENT) colorAccent: string = '#E53935';
   @StorageProp(StorageKeys.COLOR_TEXT_PRIMARY) textPrimary: string = '#212121';
   @StorageProp(StorageKeys.COLOR_TEXT_SECONDARY) textSecondary: string = '#737373';
+  @StorageProp(StorageKeys.SAFE_AREA_TOP_VP) statusBarVp: number = 34;
 
   aboutToAppear(): void {
     this.refresh();
@@ -301,8 +302,8 @@ export struct BookshelfPage {
           })
       }
       .width('100%')
-      .height(56)
-      .padding({ left: 16, right: 16 })
+      .height(56 + this.statusBarVp)
+      .padding({ top: this.statusBarVp, left: 16, right: 16 })
 
       if (this.loading) {
         Column({ space: 12 }) {

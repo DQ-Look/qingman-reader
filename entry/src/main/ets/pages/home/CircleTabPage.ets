@@ -2,9 +2,12 @@
  * 社区 Tab：还原原版 circle_fragment_layout
  * 顶部背景 + "社区"标题 + 消息入口；分类/排序 Tab；帖子列表（本版未开放）
  */
+import { StorageKeys } from '../../model/ReadConfigModels';
+
 @Component
 export struct CircleTabPage {
   pathStack: NavPathStack = new NavPathStack();
+  @StorageProp(StorageKeys.SAFE_AREA_TOP_VP) statusBarVp: number = 34;
   @State currentSort: number = 0;
 
   @Builder
@@ -43,6 +46,7 @@ export struct CircleTabPage {
           .alignItems(VerticalAlign.Bottom)
         }
         .width('100%')
+        .padding({ top: this.statusBarVp })
 
         Row() {
           this.sortTabItem('关注', 0)

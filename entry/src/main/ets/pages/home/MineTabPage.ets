@@ -2,9 +2,12 @@
  * 我的 Tab：还原原版 new_mine_fragment_layout
  * 顶部头像区 + 设置卡列表（书源管理/阅读设置/当前版本）
  */
+import { StorageKeys } from '../../model/ReadConfigModels';
+
 @Component
 export struct MineTabPage {
   pathStack: NavPathStack = new NavPathStack();
+  @StorageProp(StorageKeys.SAFE_AREA_TOP_VP) statusBarVp: number = 34;
 
   openSourceManage(): void {
     this.pathStack.pushPathByName('sourceManage', null);
@@ -31,7 +34,7 @@ export struct MineTabPage {
         })
     }
     .width('100%')
-    .padding({ top: 12 })
+    .padding({ top: this.statusBarVp + 12 })
   }
 
   @Builder

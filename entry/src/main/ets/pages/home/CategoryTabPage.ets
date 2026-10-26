@@ -32,6 +32,7 @@ class CategoryGroup {
 @Component
 export struct CategoryTabPage {
   pathStack: NavPathStack = new NavPathStack();
+  @StorageProp(StorageKeys.SAFE_AREA_TOP_VP) statusBarVp: number = 34;
   @State currentSubTab: number = 0;
   // 小说子页
   @State groups: CategoryGroup[] = [];
@@ -784,8 +785,8 @@ export struct CategoryTabPage {
         this.rightIconPill()
       }
       .width('100%')
-      .height(48)
-      .padding({ left: 12, right: 12 })
+      .height(48 + this.statusBarVp)
+      .padding({ top: this.statusBarVp, left: 12, right: 12 })
       .backgroundColor('#FFFFFF')
 
       if (this.currentSubTab === 0) {

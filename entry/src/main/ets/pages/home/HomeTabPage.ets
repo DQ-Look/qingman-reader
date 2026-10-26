@@ -25,6 +25,7 @@ class ComicSection {
 @Component
 export struct HomeTabPage {
   pathStack: NavPathStack = new NavPathStack();
+  @StorageProp(StorageKeys.SAFE_AREA_TOP_VP) statusBarVp: number = 34;
   @State currentSubTab: number = 0;
   @State shelfBooks: Book[] = [];
   @State comicSections: ComicSection[] = [];
@@ -1053,7 +1054,7 @@ export struct HomeTabPage {
         this.rightIconPill()
       }
       .width('100%')
-      .padding({ top: 14, bottom: 10, left: 12, right: 12 })
+      .padding({ top: this.statusBarVp + 14, bottom: 10, left: 12, right: 12 })
       .backgroundColor('#FFFFFF')
 
       if (this.currentSubTab === 0) {
