@@ -10,7 +10,6 @@ import { BookCover } from '../components/BookCover';
 import { ComicItem, ComicParam, ComicSearchResult } from '../model/ComicApiModels';
 import { ComicApi } from '../service/ComicApi';
 import { Db } from '../service/Db';
-import { PageHeader } from '../common/PageHeader';
 
 const COMIC_PAGE_SIZE: number = 20;
 
@@ -34,6 +33,7 @@ struct SearchPage {
   @StorageProp(StorageKeys.COLOR_TEXT_PRIMARY) textPrimary: string = '#212121';
   @StorageProp(StorageKeys.COLOR_TEXT_SECONDARY) textSecondary: string = '#737373';
   @StorageProp(StorageKeys.COLOR_DIVIDER) dividerColor: string = '#E5E5E5';
+  @StorageProp(StorageKeys.SAFE_AREA_TOP_VP) statusBarVp: number = 34;
 
   loadHistory(): void {
     Db.getInstance().getSearchHistory().then((list: string[]) => {
@@ -415,22 +415,36 @@ struct SearchPage {
   build() {
     NavDestination() {
       Column() {
-        PageHeader({
-          title: '搜索',
-          pathStack: this.navPathStack,
-          textColor: this.textPrimary
-        })
-        Search({ placeholder: '搜索漫画 / 书名 / 作者', value: this.keyword })
-          .searchButton('搜索')
+        Row({ space: 2 }) {
+          Row() {
+            SymbolGlyph($r('sys.symbol.chevron_left'))
+              .fontSize(26)
+              .fontColor([this.textPrimary])
+          }
+          .width(40)
           .height(40)
-          .backgroundColor(Color.White)
-          .margin({ left: 12, right: 12, top: 4 })
-          .onChange((value: string) => {
-            this.keyword = value;
+          .justifyContent(FlexAlign.Center)
+          .onClick(() => {
+            if (this.navPathStack.size() > 0) {
+              this.navPathStack.pop();
+            }
           })
-          .onSubmit((value: string) => {
-            this.doSearch(value);
-          })
+
+          Search({ placeholder: '搜索漫画 / 书名 / 作者', value: this.keyword })
+            .searchButton('搜索')
+            .height(40)
+            .backgroundColor(Color.White)
+            .layoutWeight(1)
+            .onChange((value: string) => {
+              this.keyword = value;
+            })
+            .onSubmit((value: string) => {
+              this.doSearch(value);
+            })
+        }
+        .width('100%')
+        .padding({ top: this.statusBarVp + 6, left: 6, right: 12, bottom: 4 })
+        .alignItems(VerticalAlign.Center)
 
         if (this.searching || (this.comicLoadingMore && this.comicList.length === 0)) {
           Row({ space: 8 }) {
@@ -456,6 +470,7 @@ struct SearchPage {
           }
           .layoutWeight(1)
           .width('100%')
+          .align(Alignment.Top)
           .scrollBar(BarState.Off)
         } else if (this.comicFailed !== '' && this.comicList.length === 0 && !this.searching) {
           Scroll() {
@@ -466,6 +481,7 @@ struct SearchPage {
           }
           .layoutWeight(1)
           .width('100%')
+          .align(Alignment.Top)
           .scrollBar(BarState.Off)
         } else if (!this.searching && this.comicList.length === 0 && this.groups.length === 0) {
           Column() {
