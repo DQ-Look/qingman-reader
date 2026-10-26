@@ -24,17 +24,25 @@ const AUTO_SCROLL_TICK_MS: number = 16;
 const AUTO_SCROLL_BASE_PX: number = 2;
 /** 默认页面宽高比（宽/高）：未解码前的占位比例，典型漫画单页 */
 const DEFAULT_PAGE_W_RATIO: number = 0.69;
+/** 单图加载失败自动恢复：滚动窗口时长与窗口内整章重拉次数上限 */
+const IMAGE_RECOVER_WINDOW_MS: number = 60000;
+const IMAGE_RECOVER_MAX: number = 3;
+/** 无感接章：距已加载内容底部不足 N 页时预拼接下一话 */
+const STITCH_AHEAD_PAGES: number = 4;
 
 @Observed
 class ReaderPageImage {
   url: string;
   key: string;
+  /** 所属话在目录中的索引（无感接章跨话拼接用） */
+  episodeIdx: number = 0;
   /** 解码后的真实宽高比（宽/高），0 = 未解码 */
   ratio: number = 0;
 
-  constructor(url: string, key: string) {
+  constructor(url: string, key: string, episodeIdx: number) {
     this.url = url;
     this.key = key;
+    this.episodeIdx = episodeIdx;
   }
 }
 
@@ -48,19 +56,26 @@ struct ReaderImageItem {
   @Prop placeholderWRatio: number;
   onImageRatio: (ratio: number) => void = (ratio: number) => {
   };
+  onImageError: () => void = () => {
+  };
 
   build() {
     Image(this.img.url)
       .width('100%')
-      .objectFit(ImageFit.Contain)
+      // 解码后用 Fill 把位图铺满组件：消除 Contain 等比留白与像素取整缝隙（图片间黑线）
+      .objectFit(this.img.ratio > 0 ? ImageFit.Fill : ImageFit.Contain)
       .aspectRatio(this.img.ratio > 0 ? this.img.ratio : this.placeholderWRatio)
-      .backgroundColor('#2E2E33')
+      // 底色只在占位阶段显示；解码后透明，避免条漫拼接处出现色带
+      .backgroundColor(this.img.ratio > 0 ? Color.Transparent : '#2E2E33')
       .onComplete((event) => {
         if (event && event.width > 0 && event.height > 0 && this.img.ratio <= 0) {
           const r: number = event.width / event.height;
           this.img.ratio = r;
           this.onImageRatio(r);
         }
+      })
+      .onError(() => {
+        this.onImageError();
       })
   }
 }
@@ -99,6 +114,13 @@ struct ComicReaderPage {
   private pendingStartPage: number = 0;
   private startPageUsed: boolean = false;
   private lastProgressSaveAt: number = 0;
+  /** 单图加载失败自动恢复：窗口起点、已恢复次数、恢复请求在途标记 */
+  private recoverWindowAt: number = 0;
+  private recoverCount: number = 0;
+  private recoveringImages: boolean = false;
+  /** 无感接章：当前首可见页全局索引 / 下一话拼接请求在途标记 */
+  private firstVisible: number = 0;
+  private stitchingNext: boolean = false;
   /** 状态栏/手势条避让高度（vp），由 EntryAbility 全局全屏后发布，随避让区变化刷新 */
   @StorageProp(StorageKeys.SAFE_AREA_TOP_VP) statusBarVp: number = 34;
   @StorageProp(StorageKeys.SAFE_AREA_BOTTOM_VP) navBarVp: number = 24;
@@ -233,11 +255,11 @@ struct ComicReaderPage {
       if (raw !== '' && this.images.length === 0) {
         const imgs: ComicEpisodeImage[] = parseEpisodeImages(raw);
         if (imgs.length > 0) {
-          this.applyImages(imgs);
-          if (imagesFresh(imgs)) {
-            this.prefetchNext();
-            return;
-          }
+        this.applyImages(imgs);
+        if (imagesFresh(imgs)) {
+          this.prefetchNext(this.currentIndex);
+          return;
+        }
         }
       }
       this.refreshEpisodeImages(key, db);
@@ -250,12 +272,20 @@ struct ComicReaderPage {
    * 网络刷新当前章节图片并预取下一话
    */
   refreshEpisodeImages(key: string, db: Db): void {
-    ComicApi.getInstance().getEpisodeImagesRaw(this.currentEpisode().episodeId).then((raw: string) => {
+    // 请求期间可能已切章：按发起时的章节校验响应，避免错误写缓存/渲染错章
+    const epId: string = this.currentEpisode().episodeId;
+    ComicApi.getInstance().getEpisodeImagesRaw(epId).then((raw: string) => {
+      if (this.currentEpisode().episodeId !== epId) {
+        return;
+      }
       db.setCache(key, raw).catch(() => {
       });
       this.applyImages(parseEpisodeImages(raw));
-      this.prefetchNext();
+      this.prefetchNext(this.currentIndex);
     }).catch((e: Error) => {
+      if (this.currentEpisode().episodeId !== epId) {
+        return;
+      }
       if (this.images.length === 0) {
         this.failedMsg = e.message;
         this.loading = false;
@@ -263,10 +293,63 @@ struct ComicReaderPage {
     });
   }
 
+  /**
+   * 单图加载失败（URL 过期/网络抖动）自动恢复：
+   * 整章重拉最新图片列表并原地合并 URL，无需退出重进即可自愈黑屏
+   */
+  recoverImages(): void {
+    if (this.recoveringImages || this.loading || this.failedMsg !== '' || this.images.length === 0) {
+      return;
+    }
+    const ep: ComicEpisode = this.currentEpisode();
+    if (ep.episodeId === '') {
+      return;
+    }
+    const now: number = Date.now();
+    if (now - this.recoverWindowAt > IMAGE_RECOVER_WINDOW_MS) {
+      this.recoverWindowAt = now;
+      this.recoverCount = 0;
+    }
+    if (this.recoverCount >= IMAGE_RECOVER_MAX) {
+      return;
+    }
+    this.recoverCount += 1;
+    this.recoveringImages = true;
+    const epId: string = ep.episodeId;
+    const key: string = CACHE_PREFIX_IMGS + epId;
+    ComicApi.getInstance().getEpisodeImagesRaw(epId).then((raw: string) => {
+      if (this.currentEpisode().episodeId !== epId) {
+        return;
+      }
+      Db.getInstance().setCache(key, raw).catch(() => {
+      });
+      this.applyImages(parseEpisodeImages(raw));
+    }).catch(() => {
+    }).finally(() => {
+      this.recoveringImages = false;
+    });
+  }
+
   applyImages(imgs: ComicEpisodeImage[]): void {
-    this.images = this.toReaderPages(imgs);
+    // 同章刷新时复用已有页对象并原地更新 URL：
+    // ForEach 键不变会保留旧子组件，整体换新对象会导致新 URL 不生效（旧 URL 过期 → 整章黑屏）
+    const isUpdate: boolean = this.images.length > 0;
+    const prevCur: ReaderPageImage[] = [];
+    const prevNext: ReaderPageImage[] = [];
+    for (let i = 0; i < this.images.length; i++) {
+      if (this.images[i].episodeIdx === this.currentIndex) {
+        prevCur.push(this.images[i]);
+      } else {
+        prevNext.push(this.images[i]);
+      }
+    }
+    const curPages: ReaderPageImage[] = this.toReaderPages(imgs, prevCur, this.currentIndex);
+    // 无感接章：重拉/恢复当前话时，保留已拼接到下方的后续话
+    this.images = curPages.concat(prevNext);
     this.loading = false;
-    this.seekValue = 0;
+    if (!isUpdate) {
+      this.seekValue = 0;
+    }
     if (imgs.length === 0) {
       // 避免静默渲染空 List 导致黑屏
       this.failedMsg = '本章节暂无图片';
@@ -302,13 +385,124 @@ struct ComicReaderPage {
     this.updateShelfProgress();
   }
 
-  toReaderPages(imgs: ComicEpisodeImage[]): ReaderPageImage[] {
+  toReaderPages(imgs: ComicEpisodeImage[], prev: ReaderPageImage[], episodeIdx: number): ReaderPageImage[] {
+    const prevMap: Map<string, ReaderPageImage> = new Map();
+    for (let i = 0; i < prev.length; i++) {
+      prevMap.set(prev[i].key, prev[i]);
+    }
     const pages: ReaderPageImage[] = [];
     for (let i = 0; i < imgs.length; i++) {
       const img: ComicEpisodeImage = imgs[i];
-      pages.push(new ReaderPageImage(img.imageUrl, img.imageId + '_' + img.imageIndex));
+      const key: string = this.pageKey(episodeIdx, img);
+      const reused: ReaderPageImage | undefined = prevMap.get(key);
+      if (reused !== undefined) {
+        // 原地改 URL：@ObjectLink 感知变化，Image 换源重载，已解码比例保留不抖动
+        if (reused.url !== img.imageUrl) {
+          reused.url = img.imageUrl;
+        }
+        pages.push(reused);
+      } else {
+        pages.push(new ReaderPageImage(img.imageUrl, key, episodeIdx));
+      }
     }
     return pages;
+  }
+
+  /** 列表项键：带话索引前缀，跨话拼接时保持唯一 */
+  pageKey(episodeIdx: number, img: ComicEpisodeImage): string {
+    return episodeIdx + '_' + img.imageId + '_' + img.imageIndex;
+  }
+
+  /** 已拼接内容的最后一话索引（无内容返回 -1） */
+  lastLoadedEpisodeIdx(): number {
+    let last: number = -1;
+    for (let i = 0; i < this.images.length; i++) {
+      if (this.images[i].episodeIdx > last) {
+        last = this.images[i].episodeIdx;
+      }
+    }
+    return last;
+  }
+
+  /** 某话在已拼接列表中的起始全局索引 */
+  offsetOfEpisode(idx: number): number {
+    for (let i = 0; i < this.images.length; i++) {
+      if (this.images[i].episodeIdx === idx) {
+        return i;
+      }
+    }
+    return 0;
+  }
+
+  /** 某话已加载页数 */
+  episodePageCount(idx: number): number {
+    let count: number = 0;
+    for (let i = 0; i < this.images.length; i++) {
+      if (this.images[i].episodeIdx === idx) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  isEpisodeLoaded(idx: number): boolean {
+    return this.episodePageCount(idx) > 0;
+  }
+
+  /**
+   * 无感接章：距已加载内容底部不足 STITCH_AHEAD_PAGES 页时，
+   * 把下一话图片拼接到列表尾（缓存优先，缺失才拉网），滚动不停顿
+   */
+  maybeStitchNext(): void {
+    if (this.stitchingNext || this.loading || this.failedMsg !== '' || this.images.length === 0) {
+      return;
+    }
+    const nextIdx: number = this.lastLoadedEpisodeIdx() + 1;
+    if (nextIdx <= 0 || nextIdx >= this.episodes.length) {
+      return;
+    }
+    const ep: ComicEpisode = this.episodes[nextIdx];
+    if (ep.episodeId === '') {
+      return;
+    }
+    this.stitchingNext = true;
+    const key: string = CACHE_PREFIX_IMGS + ep.episodeId;
+    Db.getInstance().getCache(key).then((raw: string) => {
+      if (raw !== '') {
+        this.finishStitch(nextIdx, raw);
+        return;
+      }
+      ComicApi.getInstance().getEpisodeImagesRaw(ep.episodeId).then((fresh: string) => {
+        Db.getInstance().setCache(key, fresh).catch(() => {
+        });
+        this.finishStitch(nextIdx, fresh);
+      }).catch(() => {
+        this.stitchingNext = false;
+      });
+    }).catch(() => {
+      this.stitchingNext = false;
+    });
+  }
+
+  finishStitch(nextIdx: number, raw: string): void {
+    this.stitchingNext = false;
+    if (raw === '' || nextIdx !== this.lastLoadedEpisodeIdx() + 1) {
+      return;
+    }
+    const imgs: ComicEpisodeImage[] = parseEpisodeImages(raw);
+    if (imgs.length === 0) {
+      return;
+    }
+    this.appendEpisode(nextIdx, imgs);
+  }
+
+  appendEpisode(idx: number, imgs: ComicEpisodeImage[]): void {
+    const pages: ReaderPageImage[] = [];
+    for (let i = 0; i < imgs.length; i++) {
+      pages.push(new ReaderPageImage(imgs[i].imageUrl, this.pageKey(idx, imgs[i]), idx));
+    }
+    this.images = this.images.concat(pages);
+    this.prefetchNext(idx);
   }
 
   /**
@@ -348,8 +542,8 @@ struct ComicReaderPage {
   /**
    * 预取下一话图片列表（填充缓存，切话秒开）
    */
-  prefetchNext(): void {
-    const next: number = this.currentIndex + 1;
+  prefetchNext(baseIdx: number): void {
+    const next: number = baseIdx + 1;
     if (next < 0 || next >= this.episodes.length) {
       return;
     }
@@ -415,6 +609,11 @@ struct ComicReaderPage {
     }
     if (next >= this.episodes.length) {
       this.getUIContext().getPromptAction().showToast({ message: '已经是最后一话' });
+      return;
+    }
+    // 无感接章：目标话已拼接在列表内（上方基话或下方拼接话）时直接滚过去，不整章重载
+    if (this.isEpisodeLoaded(next)) {
+      this.scroller.scrollToIndex(this.offsetOfEpisode(next), true);
       return;
     }
     this.selectEpisode(next);
@@ -486,9 +685,11 @@ struct ComicReaderPage {
     this.chromeVisible = false;
     this.autoTimer = setInterval(() => {
       this.scroller.scrollBy(0, AUTO_SCROLL_BASE_PX * this.autoSpeed);
-      if (this.seekValue >= this.images.length - 1) {
+      // 无感接章下自动阅读持续滚过已拼接的话，直到最后一话末页才停止
+      if (this.seekValue >= this.episodePageCount(this.currentIndex) - 1 &&
+        this.lastLoadedEpisodeIdx() >= this.episodes.length - 1) {
         this.stopAutoScroll();
-        this.getUIContext().getPromptAction().showToast({ message: '已到本章末尾' });
+        this.getUIContext().getPromptAction().showToast({ message: '已是最后一话' });
       }
     }, AUTO_SCROLL_TICK_MS);
   }
@@ -520,11 +721,16 @@ struct ComicReaderPage {
   }
 
   sliderMax(): number {
-    return this.images.length > 0 ? this.images.length - 1 : 1;
+    const count: number = this.episodePageCount(this.currentIndex);
+    return count > 0 ? count - 1 : 1;
   }
 
   progressText(): string {
-    return (this.seekValue + 1) + ' / ' + this.images.length;
+    const count: number = this.episodePageCount(this.currentIndex);
+    if (count <= 0) {
+      return '';
+    }
+    return (this.seekValue + 1) + ' / ' + count;
   }
 
   episodeLabel(ep: ComicEpisode): string {
@@ -620,8 +826,10 @@ struct ComicReaderPage {
           .trackColor('#33FFFFFF')
           .selectedColor('#6C5CE7')
           .onChange((value: number, mode: SliderChangeMode) => {
+            this.seekValue = value;
             if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
-              this.scroller.scrollToIndex(value, true);
+              this.scroller.scrollToIndex(this.offsetOfEpisode(this.currentIndex) + value, true);
+              this.saveProgressThrottled();
             }
           })
         Text('下一话')
@@ -837,16 +1045,22 @@ struct ComicReaderPage {
           .justifyContent(FlexAlign.Center)
         } else {
           List({ scroller: this.scroller, space: 0 }) {
-            ForEach(this.images, (img: ReaderPageImage) => {
+            ForEach(this.images, (img: ReaderPageImage, index: number) => {
               ListItem() {
                 ReaderImageItem({
                   img: img,
                   placeholderWRatio: this.placeholderWRatio,
                   onImageRatio: (r: number) => {
                     this.updatePlaceholderRatio(r);
+                  },
+                  onImageError: () => {
+                    this.recoverImages();
                   }
                 })
               }
+              // 相邻页向上叠 1vp：列表项高度为小数像素、各自取整后拼接处
+              // 会露出 1px 页面底色缝（图片间黑线），叠压将其盖住
+              .margin({ top: index > 0 ? -1 : 0 })
             }, (img: ReaderPageImage): string => img.key)
           }
           .width('100%')
@@ -870,8 +1084,36 @@ struct ComicReaderPage {
             if (this.restoreTarget >= 0 && first < this.restoreTarget) {
               return;
             }
-            this.seekValue = first;
-            this.saveProgressThrottled();
+            this.firstVisible = first;
+            if (first >= 0 && first < this.images.length) {
+              const epIdx: number = this.images[first].episodeIdx;
+              // 无感接章：滚入已拼接的下一话时章节跟随切换（顶栏/目录/进度）
+              if (epIdx !== this.currentIndex) {
+                this.currentIndex = epIdx;
+              }
+              this.seekValue = first - this.offsetOfEpisode(epIdx);
+              this.saveProgressThrottled();
+            }
+            // 距已加载内容底部不足 N 页：预拼接下一话
+            if (this.images.length > 0 && last >= this.images.length - STITCH_AHEAD_PAGES) {
+              this.maybeStitchNext();
+            }
+          })
+          .onReachEnd(() => {
+            // 滚到底部时末页可能未成为首可见项（末图较短被截断），直接计为最后一页
+            if (this.images.length > 0) {
+              const lastIdx: number = this.images.length - 1;
+              const epIdx: number = this.images[lastIdx].episodeIdx;
+              if (epIdx !== this.currentIndex) {
+                this.currentIndex = epIdx;
+              }
+              const target: number = lastIdx - this.offsetOfEpisode(epIdx);
+              if (this.seekValue < target) {
+                this.seekValue = target;
+                this.saveProgressThrottled();
+              }
+            }
+            this.maybeStitchNext();
           })
           .onDidScroll((xOffset: number, yOffset: number) => {
             if (this.chromeVisible && (yOffset > 1 || yOffset < -1)) {
