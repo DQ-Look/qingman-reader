@@ -9,7 +9,7 @@ import { BookSourceRepo } from '../../service/BookSourceRepo';
 import { BookService, ExploreCategory } from '../../service/BookService';
 import { StorageKeys } from '../../model/ReadConfigModels';
 import { BookCover } from '../../components/BookCover';
-import { ComicHomeSection, ComicItem, ComicParam, ComicSearchResult, parseHomeData, parseComicList, parseSearchResult } from '../../model/ComicApiModels';
+import { ComicHomeSection, ComicRank, ComicItem, ComicParam, ComicMoreParam, ComicSearchResult, parseHomeData, parseComicList, parseSearchResult } from '../../model/ComicApiModels';
 import { ComicApi } from '../../service/ComicApi';
 
 const CACHE_KEY_HOME: string = 'home_data';
@@ -44,6 +44,8 @@ export struct HomeTabPage {
   @State updateRequested: boolean = false;
   @State updateFailed: string = '';
   @State refreshing: boolean = false;
+  /** 排行榜分区当前选中的榜单下标 */
+  @State rankTabIndex: number = 0;
   @StorageProp(StorageKeys.BOOKSHELF_VERSION) @Watch('onShelfChanged') bookshelfVersion: number = 0;
 
   aboutToAppear(): void {
@@ -208,6 +210,36 @@ export struct HomeTabPage {
   }
 
   /**
+   * 原版 ComicMoreActivity 的标题→排序字段映射
+   */
+  moreSortField(title: string): string {
+    if (title === '98%萌新都入坑了') {
+      return 'updateTime';
+    }
+    if (title === '咪虎推荐·爽就完事了') {
+      return 'todayPlayNum';
+    }
+    if (title === '精品·热漫看到爽！') {
+      return 'playNum';
+    }
+    return 'collectNum';
+  }
+
+  /**
+   * 分区「更多」：排行榜分区 → 排行榜页；其余 → 分区更多页
+   */
+  openSectionMore(section: ComicHomeSection): void {
+    if (section.title === '排行榜') {
+      this.pathStack.pushPathByName('comicRanking', null);
+      return;
+    }
+    const p: ComicMoreParam = new ComicMoreParam();
+    p.title = section.title;
+    p.sortField = this.moreSortField(section.title);
+    this.pathStack.pushPathByName('comicMore', p);
+  }
+
+  /**
    * 更新 Tab：先渲染缓存，再拉取最新
    */
   loadUpdateComics(): void {
@@ -340,6 +372,9 @@ export struct HomeTabPage {
       Image($r('app.media.home_right_rank_icon'))
         .width(24)
         .height(24)
+        .onClick(() => {
+          this.pathStack.pushPathByName('comicRanking', null);
+        })
       Divider()
         .vertical(true)
         .width(1)
@@ -517,7 +552,7 @@ export struct HomeTabPage {
       }
     }
     .width('100%')
-    .height('100%')
+    .layoutWeight(1)
   }
 
   @Builder
@@ -590,24 +625,113 @@ export struct HomeTabPage {
         .padding({ left: 10, right: 10, top: 4, bottom: 4 })
         .backgroundColor('#FFF2F2F2')
         .borderRadius(12)
+        .onClick(() => {
+          this.openSectionMore(section);
+        })
       }
       .width('100%')
       .padding({ top: 16, bottom: 8 })
-      Grid() {
-        ForEach(section.comics, (comic: ComicItem) => {
-          GridItem() {
-            this.apiComicCover(comic)
-          }
-        }, (comic: ComicItem): string => comic.comicId + '_' + comic.comicName)
+      if (section.ranks.length > 0) {
+        this.apiRankSection(section)
+      } else {
+        Grid() {
+          ForEach(section.comics, (comic: ComicItem) => {
+            GridItem() {
+              this.apiComicCover(comic)
+            }
+          }, (comic: ComicItem): string => comic.comicId + '_' + comic.comicName)
+        }
+        .columnsTemplate('1fr 1fr 1fr')
+        .columnsGap(8)
+        .rowsGap(12)
+        .width('100%')
       }
-      .columnsTemplate('1fr 1fr 1fr')
-      .columnsGap(8)
-      .rowsGap(12)
-      .width('100%')
     }
     .width('100%')
     .padding({ left: 12, right: 12 })
     .alignItems(HorizontalAlign.Start)
+  }
+
+  /**
+   * 排行榜分区：四榜单页签 + 带名次榜单列表（数据来自首页 rankList）
+   */
+  @Builder
+  apiRankSection(section: ComicHomeSection) {
+    Column() {
+      Row({ space: 8 }) {
+        ForEach(section.ranks, (rank: ComicRank, index: number) => {
+          Text(rank.rankingName)
+            .fontSize(13)
+            .fontWeight(index === this.rankTabIndex ? FontWeight.Medium : FontWeight.Normal)
+            .fontColor(index === this.rankTabIndex ? Color.White : '#666666')
+            .backgroundColor(index === this.rankTabIndex ? '#6C5CE7' : '#F4F1FF')
+            .borderRadius(14)
+            .padding({ left: 12, right: 12, top: 5, bottom: 5 })
+            .maxLines(1)
+            .onClick(() => {
+              this.rankTabIndex = index;
+            })
+        }, (rank: ComicRank): string => rank.rankingCode + '_' + rank.rankingName)
+      }
+      .width('100%')
+      .padding({ top: 4, bottom: 4 })
+      ForEach(section.ranks[this.rankTabIndex].comics, (comic: ComicItem, index: number) => {
+        this.apiRankRow(index, comic)
+      }, (comic: ComicItem): string => comic.comicId + '_' + comic.comicName)
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  apiRankRow(index: number, comic: ComicItem) {
+    Row({ space: 10 }) {
+      Text(String(index + 1))
+        .fontSize(index < 3 ? 17 : 14)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(index < 3 ? '#FF7043' : '#BBBBBB')
+        .width(26)
+        .textAlign(TextAlign.Center)
+      if (comic.picUrl !== '') {
+        Image(comic.picUrl)
+          .width(52)
+          .height(70)
+          .objectFit(ImageFit.Cover)
+          .borderRadius(6)
+          .backgroundColor('#EFEEF4')
+      } else {
+        Column() {
+          Text(this.firstChar(comic.comicName))
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#FFFFFF')
+        }
+        .width(52)
+        .height(70)
+        .backgroundColor('#8D8D93')
+        .borderRadius(6)
+        .justifyContent(FlexAlign.Center)
+      }
+      Column({ space: 3 }) {
+        Text(comic.comicName)
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#333333')
+          .maxLines(1)
+        Text(comic.author === '' ? '未知作者' : comic.author)
+          .fontSize(12)
+          .fontColor('#999999')
+          .maxLines(1)
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .padding({ top: 7, bottom: 7 })
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => {
+      this.openComicDetail(comic);
+    })
   }
 
   @Builder
@@ -844,7 +968,7 @@ export struct HomeTabPage {
       }
     }
     .width('100%')
-    .height('100%')
+    .layoutWeight(1)
   }
 
   @Builder
@@ -961,7 +1085,7 @@ export struct HomeTabPage {
       .scrollBar(BarState.Off)
     }
     .width('100%')
-    .height('100%')
+    .layoutWeight(1)
   }
 
   @Builder

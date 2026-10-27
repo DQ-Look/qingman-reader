@@ -49,6 +49,16 @@
       "name": "comicReader",
       "pageSourceFile": "src/main/ets/pages/ComicReaderPage.ets",
       "buildFunction": "ComicReaderPageBuilder"
+    },
+    {
+      "name": "comicMore",
+      "pageSourceFile": "src/main/ets/pages/ComicMorePage.ets",
+      "buildFunction": "ComicMorePageBuilder"
+    },
+    {
+      "name": "comicRanking",
+      "pageSourceFile": "src/main/ets/pages/ComicRankingPage.ets",
+      "buildFunction": "ComicRankingPageBuilder"
     }
   ]
 }

@@ -80,6 +80,7 @@ interface RawComicItem {
   categoryList?: Object[];
   state?: number;
   memberLevel?: number;
+  createName?: string;
 }
 
 interface RawHomeSection {
@@ -87,6 +88,12 @@ interface RawHomeSection {
   iconUrl?: string;
   comicList?: Object[];
   rankList?: Object[];
+}
+
+interface RawRank {
+  rankingName?: string;
+  rankingCode?: string;
+  comicList?: Object[];
 }
 
 interface RawEpisode {
@@ -129,11 +136,20 @@ export class ComicItem {
   updateTime: string = '';
   categories: string[] = [];
   state: number = 0;
+  createName: string = '';
 }
 
 export class ComicHomeSection {
   title: string = '';
   iconUrl: string = '';
+  comics: ComicItem[] = [];
+  /** 排行榜分区的榜单（新作榜/人气榜/收藏榜/上升榜） */
+  ranks: ComicRank[] = [];
+}
+
+export class ComicRank {
+  rankingName: string = '';
+  rankingCode: string = '';
   comics: ComicItem[] = [];
 }
 
@@ -153,10 +169,41 @@ export class ComicEpisodeImage {
   imageIndex: number = 0;
 }
 
+export class ComicComment {
+  commentId: string = '';
+  userName: string = '';
+  userAvatar: string = '';
+  content: string = '';
+  createTime: string = '';
+  likeCount: number = 0;
+  replyCount: number = 0;
+}
+
+export class ComicCommentResult {
+  total: number = 0;
+  comments: ComicComment[] = [];
+}
+
+interface RawComment {
+  commentId?: string;
+  userName?: string;
+  userAvatar?: string;
+  content?: string;
+  createTime?: string;
+  likeCount?: number;
+  replyCount?: number;
+}
+
 export class ComicParam {
   comicId: string = '';
   comicName: string = '';
   picUrl: string = '';
+}
+
+/** 首页分区「更多」页参数（title 同时用于排序字段映射） */
+export class ComicMoreParam {
+  title: string = '';
+  sortField: string = 'collectNum';
 }
 
 export class ComicSearchResult {
@@ -211,6 +258,7 @@ function parseComicItem(raw: RawComicItem): ComicItem {
   item.collectNum = normNum(raw.collectNum);
   item.updateTime = normStr(raw.updateTime);
   item.state = normNum(raw.state);
+  item.createName = normStr(raw.createName);
   if (Array.isArray(raw.categoryList)) {
     const list: string[] = [];
     const arr: Object[] = raw.categoryList as Object[];
@@ -245,11 +293,28 @@ function parseComicArray(raw: Object[] | undefined): ComicItem[] {
   return result;
 }
 
+function parseRank(raw: RawRank): ComicRank {
+  const rank: ComicRank = new ComicRank();
+  rank.rankingName = normStr(raw.rankingName);
+  rank.rankingCode = normStr(raw.rankingCode);
+  rank.comics = parseComicArray(raw.comicList);
+  return rank;
+}
+
 function parseHomeSection(raw: RawHomeSection): ComicHomeSection {
   const sec: ComicHomeSection = new ComicHomeSection();
   sec.title = normStr(raw.title);
   sec.iconUrl = normStr(raw.iconUrl);
   sec.comics = parseComicArray(raw.comicList);
+  if (Array.isArray(raw.rankList)) {
+    const arr: Object[] = raw.rankList as Object[];
+    for (let i = 0; i < arr.length; i++) {
+      const el: Object = arr[i];
+      if (typeof el === 'object' && el !== null) {
+        sec.ranks.push(parseRank(el as RawRank));
+      }
+    }
+  }
   return sec;
 }
 
@@ -384,6 +449,45 @@ export function parseEpisodeList(jsonStr: string): ComicEpisode[] {
     ep.updateTime = normStr(raw.updateTime);
     if (ep.episodeId !== '') {
       result.push(ep);
+    }
+  }
+  return result;
+}
+
+/**
+ * 解析 POST comment/page 评论分页响应（data 为 {total, list:[评论]}，
+ * 对齐原版 HomeRequestModel.q() 的 getGetCommentListResult）
+ */
+export function parseCommentPage(jsonStr: string): ComicCommentResult {
+  const parsed: Object = JSON.parse(jsonStr) as Object;
+  const resp: RawBaseResponse = parsed as RawBaseResponse;
+  const result: ComicCommentResult = new ComicCommentResult();
+  const data: Object | undefined = resp.data;
+  if (typeof data !== 'object' || data === null) {
+    return result;
+  }
+  const page: RawPagedData = data as RawPagedData;
+  result.total = normNum(page.total);
+  if (!Array.isArray(page.list)) {
+    return result;
+  }
+  const arr: Object[] = page.list as Object[];
+  for (let i = 0; i < arr.length; i++) {
+    const el: Object = arr[i];
+    if (typeof el !== 'object' || el === null) {
+      continue;
+    }
+    const raw: RawComment = el as RawComment;
+    const c: ComicComment = new ComicComment();
+    c.commentId = normStr(raw.commentId);
+    c.userName = normStr(raw.userName);
+    c.userAvatar = normStr(raw.userAvatar);
+    c.content = normStr(raw.content);
+    c.createTime = normStr(raw.createTime);
+    c.likeCount = normNum(raw.likeCount);
+    c.replyCount = normNum(raw.replyCount);
+    if (c.commentId !== '') {
+      result.comments.push(c);
     }
   }
   return result;

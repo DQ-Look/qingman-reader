@@ -104,6 +104,11 @@ struct ComicReaderPage {
   navPathStack: NavPathStack = new NavPathStack();
   scroller: Scroller = new Scroller();
   drawerScroller: Scroller = new Scroller();
+  /** 目录抽屉快速定位滑杆：显示序列索引 / 拖动激活态 / 列表区尺寸（气泡定位用） */
+  @State drawerSliderIndex: number = 0;
+  @State drawerSliderActive: boolean = false;
+  drawerSliderAreaWidth: number = 0;
+  drawerSliderAreaHeight: number = 0;
   private scrolledForEpisode: boolean = false;
   private entryHintShown: boolean = false;
   private autoTimer: number = -1;
@@ -626,13 +631,22 @@ struct ComicReaderPage {
 
   openDrawer(): void {
     this.drawerOpen = true;
-    // 等抽屉挂载后定位到当前章节（倒序时列表位置镜像）
+    // 等抽屉挂载后定位到当前章节；行未建完时首滚可能偏移，二次校正
+    this.scrollDrawerToCurrent(80);
+    this.scrollDrawerToCurrent(400);
+  }
+
+  scrollDrawerToCurrent(delay: number): void {
     setTimeout(() => {
+      if (!this.drawerOpen) {
+        return;
+      }
       const target: number = this.drawerAscending
         ? this.currentIndex
         : this.episodes.length - 1 - this.currentIndex;
+      this.drawerSliderIndex = target;
       this.drawerScroller.scrollToIndex(target, false);
-    }, 80);
+    }, delay);
   }
 
   /** 目录展示序列：正序原样，倒序反转 */
@@ -644,15 +658,44 @@ struct ComicReaderPage {
     return copy;
   }
 
+  /** 抽屉右缘快速定位滑杆：拖动 → 滚动列表到对应显示序列索引 */
+  onDrawerSliderChange(value: number, mode: SliderChangeMode): void {
+    const n: number = this.episodes.length;
+    const idx: number = Math.min(Math.max(Math.round(value), 0), Math.max(n - 1, 0));
+    this.drawerSliderIndex = idx;
+    this.drawerSliderActive = mode !== SliderChangeMode.End;
+    this.drawerScroller.scrollToIndex(idx, false);
+  }
+
+  /** 显示序列索引 → 章节（正序原样，倒序镜像），避免拖动时整表拷贝 */
+  drawerEpisodeAt(displayIndex: number): ComicEpisode {
+    const n: number = this.episodes.length;
+    const i: number = this.drawerAscending ? displayIndex : n - 1 - displayIndex;
+    if (i >= 0 && i < n) {
+      return this.episodes[i];
+    }
+    return new ComicEpisode();
+  }
+
+  drawerSliderBubbleText(): string {
+    const ep: ComicEpisode = this.drawerEpisodeAt(this.drawerSliderIndex);
+    return '第' + ep.episodeNum + '话';
+  }
+
+  /** 气泡跟随滑块：OutSet 上下各留 10vp 边距，按比例折算并夹紧 */
+  drawerBubbleY(): number {
+    const max: number = Math.max(this.episodes.length - 1, 0);
+    const fraction: number = max > 0 ? this.drawerSliderIndex / max : 0;
+    const h: number = this.drawerSliderAreaHeight;
+    const y: number = 12 + fraction * Math.max(h - 24, 0) - 14;
+    return Math.min(Math.max(y, 0), Math.max(h - 30, 0));
+  }
+
   toggleDrawerSort(): void {
     this.drawerAscending = !this.drawerAscending;
-    // 等列表重建后重新定位到当前章节
-    setTimeout(() => {
-      const target: number = this.drawerAscending
-        ? this.currentIndex
-        : this.episodes.length - 1 - this.currentIndex;
-      this.drawerScroller.scrollToIndex(target, false);
-    }, 80);
+    // 等列表重建后重新定位到当前章节；二次校正见 openDrawer
+    this.scrollDrawerToCurrent(80);
+    this.scrollDrawerToCurrent(400);
   }
 
   /** 按 episodeId 反查正序索引 */
@@ -873,82 +916,133 @@ struct ComicReaderPage {
   }
 
   /**
-   * 右侧章节目录抽屉（还原原版 DrawerLayout END + rvChapter）
+   * 右侧章节目录抽屉（单根 Stack：遮罩 + 右侧面板，与全章节弹窗同构）
    */
   @Builder
   chapterDrawer() {
-    Column() {
-      Row({ space: 8 }) {
-        Text('目录')
-          .fontSize(17)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#222222')
-        Text('共 ' + this.episodes.length + ' 话')
-          .fontSize(12)
-          .fontColor('#999999')
-        Blank()
-        Text(this.drawerAscending ? '正序 ↓' : '倒序 ↑')
-          .fontSize(12)
-          .fontColor('#6C5CE7')
-          .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-          .backgroundColor('#F0EDFF')
-          .borderRadius(12)
-          .onClick(() => {
-            this.toggleDrawerSort();
-          })
-        SymbolGlyph($r('sys.symbol.xmark'))
-          .fontSize(18)
-          .fontColor(['#666666'])
-          .onClick(() => {
-            this.closeDrawer();
-          })
-      }
-      .width('100%')
-      .padding({ left: 16, right: 16, top: 18, bottom: 12 })
-
-      List({ scroller: this.drawerScroller, space: 0 }) {
-        ForEach(this.drawerEpisodes(), (ep: ComicEpisode) => {
-          ListItem() {
-            Row({ space: 8 }) {
-              Text(this.episodeLabel(ep))
-                .fontSize(14)
-                .fontColor(this.episodeIndexOf(ep) === this.currentIndex ? '#6C5CE7' : '#333333')
-                .fontWeight(this.episodeIndexOf(ep) === this.currentIndex ? FontWeight.Medium : FontWeight.Normal)
-                .maxLines(1)
-                .layoutWeight(1)
-              if (this.episodeIndexOf(ep) === this.currentIndex) {
-                SymbolGlyph($r('sys.symbol.checkmark'))
-                  .fontSize(14)
-                  .fontColor(['#6C5CE7'])
-              }
-            }
-            .width('100%')
-            .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+    Stack({ alignContent: Alignment.End }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#66000000')
+        .onClick(() => {
+          this.closeDrawer();
+        })
+      Column() {
+        Row({ space: 8 }) {
+          Text('目录')
+            .fontSize(17)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#222222')
+          Text('共 ' + this.episodes.length + ' 话')
+            .fontSize(12)
+            .fontColor('#999999')
+            .layoutWeight(1)
+          Text(this.drawerAscending ? '正序 ↓' : '倒序 ↑')
+            .fontSize(12)
+            .fontColor('#6C5CE7')
+            .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+            .backgroundColor('#F0EDFF')
+            .borderRadius(12)
+            .onClick(() => {
+              this.toggleDrawerSort();
+            })
+          Text('×')
+            .fontSize(18)
+            .fontColor('#666666')
             .onClick(() => {
               this.closeDrawer();
-              const index: number = this.episodeIndexOf(ep);
-              if (index !== this.currentIndex) {
-                this.selectEpisode(index);
-              }
             })
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 18, bottom: 12 })
+
+        Stack({ alignContent: Alignment.End }) {
+          List({ scroller: this.drawerScroller, space: 0 }) {
+            ForEach(this.drawerEpisodes(), (ep: ComicEpisode) => {
+              ListItem() {
+                Row({ space: 8 }) {
+                  Text(this.episodeLabel(ep))
+                    .fontSize(14)
+                    .fontColor(this.episodeIndexOf(ep) === this.currentIndex ? '#6C5CE7' : '#333333')
+                    .fontWeight(this.episodeIndexOf(ep) === this.currentIndex ? FontWeight.Medium : FontWeight.Normal)
+                    .maxLines(1)
+                    .layoutWeight(1)
+                  if (this.episodeIndexOf(ep) === this.currentIndex) {
+                    Text('在看')
+                      .fontSize(10)
+                      .fontColor('#6C5CE7')
+                      .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+                      .backgroundColor('#F0EDFF')
+                      .borderRadius(8)
+                  }
+                }
+                .width('100%')
+                .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+                .onClick(() => {
+                  this.closeDrawer();
+                  const index: number = this.episodeIndexOf(ep);
+                  if (index !== this.currentIndex) {
+                    this.selectEpisode(index);
+                  }
+                })
+              }
+            }, (ep: ComicEpisode): string => ep.episodeId + '_' + this.drawerAscending)
           }
-        }, (ep: ComicEpisode): string => ep.episodeId + '_' + this.drawerAscending)
+          .height('100%')
+          .width('100%')
+          .divider({
+            strokeWidth: 0.5,
+            color: '#F0F0F0',
+            startMargin: 16,
+            endMargin: 16
+          })
+          .scrollBar(BarState.Auto)
+          .edgeEffect(EdgeEffect.Spring)
+          .onAreaChange((_o: Area, n: Area) => {
+            this.drawerSliderAreaWidth = Number(n.width);
+            this.drawerSliderAreaHeight = Number(n.height);
+          })
+          Slider({
+            value: this.drawerSliderIndex,
+            min: 0,
+            max: Math.max(this.episodes.length - 1, 0),
+            step: 1,
+            direction: Axis.Vertical,
+            style: SliderStyle.OutSet
+          })
+          .width(28)
+          .height('100%')
+          .blockColor('#6C5CE7')
+          .trackColor('#E6E6E6')
+          .selectedColor('#6C5CE7')
+          .onChange((value: number, mode: SliderChangeMode) => {
+            this.onDrawerSliderChange(value, mode);
+          })
+          if (this.drawerSliderActive) {
+            Text(this.drawerSliderBubbleText())
+              .fontSize(12)
+              .fontColor('#FFFFFF')
+              .maxLines(1)
+              .backgroundColor('#6C5CE7')
+              .borderRadius(12)
+              .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+              .position({
+                x: Math.max(this.drawerSliderAreaWidth - 104, 8),
+                y: this.drawerBubbleY()
+              })
+          }
+        }
+        .layoutWeight(1)
+        .width('100%')
       }
-      .layoutWeight(1)
-      .width('100%')
-      .divider({
-        strokeWidth: 0.5,
-        color: '#F0F0F0',
-        startMargin: 16,
-        endMargin: 16
-      })
-      .scrollBar(BarState.Auto)
-      .edgeEffect(EdgeEffect.Spring)
+      .width('76%')
+      .height('100%')
+      .padding({ top: this.statusBarVp, bottom: this.navBarVp })
+      .backgroundColor('#FFFFFF')
     }
-    .width('76%')
+    .width('100%')
     .height('100%')
-    .backgroundColor('#FFFFFF')
-    .transition(TransitionEffect.translate({ x: 320 }).animation({ duration: 250, curve: Curve.Friction }))
   }
 
   /**
@@ -1136,16 +1230,8 @@ struct ComicReaderPage {
           .position({ x: 0, y: '100%' })
           .markAnchor({ x: 0, y: '100%' })
         }
-        // 章节目录抽屉：遮罩 + 右侧面板
+        // 章节目录抽屉（单根 Stack：遮罩 + 右侧面板）
         if (this.drawerOpen) {
-          Column()
-            .width('100%')
-            .height('100%')
-            .backgroundColor('#66000000')
-            .transition(TransitionEffect.opacity(0).animation({ duration: 250 }))
-            .onClick(() => {
-              this.closeDrawer();
-            })
           this.chapterDrawer()
         }
         // 自动阅读中悬浮速度按钮（顶栏隐藏时也可停止）

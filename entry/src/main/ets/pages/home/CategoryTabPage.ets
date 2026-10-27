@@ -391,6 +391,9 @@ export struct CategoryTabPage {
       Image($r('app.media.home_right_rank_icon'))
         .width(24)
         .height(24)
+        .onClick(() => {
+          this.pathStack.pushPathByName('comicRanking', null);
+        })
       Divider()
         .vertical(true)
         .width(1)

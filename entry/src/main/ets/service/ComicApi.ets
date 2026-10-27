@@ -12,8 +12,9 @@ import { StorageKeys } from '../model/ReadConfigModels';
 import { NetworkError } from '../common/BizError';
 import {
   ComicHomeSection, ComicItem, ComicEpisode, ComicEpisodeImage, ComicSearchResult,
+  ComicCommentResult,
   parseHomeData, parseEpisodeList, parseEpisodeImages, parseComicInfo,
-  parseSearchResult
+  parseSearchResult, parseComicList, parseCommentPage
 } from '../model/ComicApiModels';
 const DOMAIN: number = 0x0000;
 const TAG: string = 'Qingman.ComicApi';
@@ -277,5 +278,24 @@ export class ComicApi {
    */
   async getEpisodeImagesRaw(episodeId: string): Promise<string> {
     return this.requestJson('/comic/episode/images/' + episodeId, http.RequestMethod.GET, '');
+  }
+
+  /**
+   * GET comic/appLikeDataList/{comicId} → 详情页「猜你喜欢」推荐列表
+   * （对齐原版 T2/a.P0，data 为漫画数组，与 comic/search item 同构）
+   */
+  async getLikeDataList(comicId: string): Promise<ComicItem[]> {
+    const body: string = await this.requestJson('/comic/appLikeDataList/' + comicId, http.RequestMethod.GET, '');
+    return parseComicList(body);
+  }
+
+  /**
+   * POST comment/page → 详情页评论（按点赞数降序，对齐原版 ComicDetailsActivity.d1）
+   */
+  async getCommentPage(comicId: string, pageIndex: number, pageSize: number): Promise<ComicCommentResult> {
+    const body: string = '{"sortField":"likeCount","sortOrder":"desc","pageIndex":' + pageIndex +
+      ',"pageSize":' + pageSize + ',"dramaId":"' + comicId + '"}';
+    const respBody: string = await this.requestJson('/comment/page', http.RequestMethod.POST, body);
+    return parseCommentPage(respBody);
   }
 }
