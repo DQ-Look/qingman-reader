@@ -4,6 +4,7 @@
 import { http } from '@kit.NetworkKit';
 import { util } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { NetworkError } from '../common/BizError';
 
 const DOMAIN: number = 0x0000;
@@ -153,8 +154,22 @@ export async function httpText(url: string, spec: HttpRequestSpec): Promise<Http
     if (e instanceof NetworkError) {
       throw e;
     }
-    const errMsg: string = e instanceof Error ? e.message : String(e);
-    throw new NetworkError('请求失败: ' + errMsg + ' ' + url);
+    let errMsg: string = '';
+    let errCode: number = 0;
+    if (e instanceof Error) {
+      errMsg = e.message;
+    } else {
+      // http 网络层失败以 BusinessError（code+message）拒绝，instanceof Error 不成立
+      const err = e as BusinessError;
+      if (typeof err.code === 'number') {
+        errCode = err.code;
+      }
+      if (typeof err.message === 'string') {
+        errMsg = err.message;
+      }
+    }
+    hilog.warn(DOMAIN, TAG, 'request failed code=%{public}d msg=%{public}s url=%{public}s', errCode, errMsg, url);
+    throw new NetworkError('请求失败: [' + errCode + '] ' + errMsg + ' ' + url);
   } finally {
     client.destroy();
   }
