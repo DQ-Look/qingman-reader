@@ -47,6 +47,63 @@ class ReaderPageImage {
 }
 
 /**
+ * 阅读页列表数据源：配合 LazyForEach 按需构建/回收列表项，
+ * 长链路无感接章（数十话连续拼接）时只保留视口附近的组件与解码位图，内存有界
+ */
+class ReaderPagesDataSource implements IDataSource {
+  private pages: ReaderPageImage[] = [];
+  private listeners: DataChangeListener[] = [];
+
+  totalCount(): number {
+    return this.pages.length;
+  }
+
+  getData(index: number): ReaderPageImage {
+    return this.pages[index];
+  }
+
+  registerDataChangeListener(listener: DataChangeListener): void {
+    if (this.listeners.indexOf(listener) < 0) {
+      this.listeners.push(listener);
+    }
+  }
+
+  unregisterDataChangeListener(listener: DataChangeListener): void {
+    const pos: number = this.listeners.indexOf(listener);
+    if (pos >= 0) {
+      this.listeners.splice(pos, 1);
+    }
+  }
+
+  /** 整表替换（进章/切章/键序变化时全量重建） */
+  reloadAll(pages: ReaderPageImage[]): void {
+    this.pages = pages;
+    for (let i = 0; i < this.listeners.length; i++) {
+      this.listeners[i].onDataReloaded();
+    }
+  }
+
+  /** 尾部追加已拼接的下一话，仅通知新增区间，视口内已建项不重建 */
+  appendFrom(pages: ReaderPageImage[], startIndex: number): void {
+    this.pages = pages;
+    for (let i = 0; i < this.listeners.length; i++) {
+      const listener: DataChangeListener = this.listeners[i];
+      for (let index = startIndex; index < pages.length; index++) {
+        listener.onDataAdd(index);
+      }
+    }
+  }
+
+  /** 长度相同且首尾为同一对象视为原地刷新（URL 原地更新，无需重建列表项） */
+  sameInPlace(pages: ReaderPageImage[]): boolean {
+    if (this.pages.length === 0 || this.pages.length !== pages.length) {
+      return false;
+    }
+    return this.pages[0] === pages[0] && this.pages[this.pages.length - 1] === pages[pages.length - 1];
+  }
+}
+
+/**
  * 单页图片：解码前按占位宽高比预留高度（无黑屏、恢复定位可用），
  * onComplete 后切换为真实宽高比，高度与图片完全贴合、无黑边
  */
@@ -103,6 +160,8 @@ struct ComicReaderPage {
   @State autoSpeed: number = 1.0;
   navPathStack: NavPathStack = new NavPathStack();
   scroller: Scroller = new Scroller();
+  /** 阅读页列表数据源（LazyForEach 用），与 @State images 同步维护 */
+  pagesDs: ReaderPagesDataSource = new ReaderPagesDataSource();
   drawerScroller: Scroller = new Scroller();
   /** 目录抽屉快速定位滑杆：显示序列索引 / 拖动激活态 / 列表区尺寸（气泡定位用） */
   @State drawerSliderIndex: number = 0;
@@ -251,6 +310,7 @@ struct ComicReaderPage {
     }
     this.failedMsg = '';
     this.images = [];
+    this.pagesDs.reloadAll(this.images);
     this.seekValue = 0;
     this.scrolledForEpisode = false;
     this.loading = true;
@@ -351,6 +411,10 @@ struct ComicReaderPage {
     const curPages: ReaderPageImage[] = this.toReaderPages(imgs, prevCur, this.currentIndex);
     // 无感接章：重拉/恢复当前话时，保留已拼接到下方的后续话
     this.images = curPages.concat(prevNext);
+    // 原地刷新（同键同序、URL 原地更新）无需重建列表项；结构变化才整表刷新
+    if (!this.pagesDs.sameInPlace(this.images)) {
+      this.pagesDs.reloadAll(this.images);
+    }
     this.loading = false;
     if (!isUpdate) {
       this.seekValue = 0;
@@ -506,7 +570,9 @@ struct ComicReaderPage {
     for (let i = 0; i < imgs.length; i++) {
       pages.push(new ReaderPageImage(imgs[i].imageUrl, this.pageKey(idx, imgs[i]), idx));
     }
+    const start: number = this.images.length;
     this.images = this.images.concat(pages);
+    this.pagesDs.appendFrom(this.images, start);
     this.prefetchNext(idx);
   }
 
@@ -871,7 +937,10 @@ struct ComicReaderPage {
           .onChange((value: number, mode: SliderChangeMode) => {
             this.seekValue = value;
             if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
-              this.scroller.scrollToIndex(this.offsetOfEpisode(this.currentIndex) + value, true);
+              const target: number = this.offsetOfEpisode(this.currentIndex) + value;
+              // 近距离用动画平滑过渡；大幅跳页直接定位，
+              // 避免动画滚动渲染整章路径导致长时间卡顿
+              this.scroller.scrollToIndex(target, Math.abs(target - this.firstVisible) <= 3);
               this.saveProgressThrottled();
             }
           })
@@ -1139,7 +1208,7 @@ struct ComicReaderPage {
           .justifyContent(FlexAlign.Center)
         } else {
           List({ scroller: this.scroller, space: 0 }) {
-            ForEach(this.images, (img: ReaderPageImage, index: number) => {
+            LazyForEach(this.pagesDs, (img: ReaderPageImage, index: number) => {
               ListItem() {
                 ReaderImageItem({
                   img: img,

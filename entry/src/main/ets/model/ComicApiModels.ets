@@ -30,7 +30,8 @@ export function urlFresh(url: string): boolean {
   if (!ts) {
     return false;
   }
-  return Date.now() - ts < AUTH_KEY_FRESH_MS;
+  // auth_key 的时间戳为秒级，需乘 1000 与 Date.now()（毫秒）对齐
+  return Date.now() - ts * 1000 < AUTH_KEY_FRESH_MS;
 }
 
 /**
