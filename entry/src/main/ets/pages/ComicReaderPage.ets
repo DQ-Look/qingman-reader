@@ -111,29 +111,58 @@ class ReaderPagesDataSource implements IDataSource {
 struct ReaderImageItem {
   @ObjectLink img: ReaderPageImage;
   @Prop placeholderWRatio: number;
+  /** 列表宽度（px）：页高按整像素计算，相邻页边界落在像素网格上 */
+  @Prop itemWidthPx: number;
   onImageRatio: (ratio: number) => void = (ratio: number) => {
   };
   onImageError: () => void = () => {
   };
 
+  /** 页高取整像素（vp）：拼接处既无缝隙（黑线）也无叠压（压字） */
+  pageHeightVp(): number {
+    const ratio: number = this.img.ratio > 0 ? this.img.ratio : this.placeholderWRatio;
+    if (ratio <= 0 || this.itemWidthPx <= 0) {
+      return 0;
+    }
+    return px2vp(Math.max(1, Math.round(this.itemWidthPx / ratio)));
+  }
+
   build() {
-    Image(this.img.url)
-      .width('100%')
-      // 解码后用 Fill 把位图铺满组件：消除 Contain 等比留白与像素取整缝隙（图片间黑线）
-      .objectFit(this.img.ratio > 0 ? ImageFit.Fill : ImageFit.Contain)
-      .aspectRatio(this.img.ratio > 0 ? this.img.ratio : this.placeholderWRatio)
-      // 底色只在占位阶段显示；解码后透明，避免条漫拼接处出现色带
-      .backgroundColor(this.img.ratio > 0 ? Color.Transparent : '#2E2E33')
-      .onComplete((event) => {
-        if (event && event.width > 0 && event.height > 0 && this.img.ratio <= 0) {
-          const r: number = event.width / event.height;
-          this.img.ratio = r;
-          this.onImageRatio(r);
-        }
-      })
-      .onError(() => {
-        this.onImageError();
-      })
+    if (this.itemWidthPx > 0) {
+      Image(this.img.url)
+        .width('100%')
+        .height(this.pageHeightVp())
+        // 解码后用 Fill 把位图铺满组件：消除 Contain 等比留白与像素取整缝隙（图片间黑线）
+        .objectFit(this.img.ratio > 0 ? ImageFit.Fill : ImageFit.Contain)
+        // 底色只在占位阶段显示；解码后透明，避免条漫拼接处出现色带
+        .backgroundColor(this.img.ratio > 0 ? Color.Transparent : '#2E2E33')
+        .onComplete((event) => {
+          if (event && event.width > 0 && event.height > 0 && this.img.ratio <= 0) {
+            const r: number = event.width / event.height;
+            this.img.ratio = r;
+            this.onImageRatio(r);
+          }
+        })
+        .onError(() => {
+          this.onImageError();
+        })
+    } else {
+      Image(this.img.url)
+        .width('100%')
+        .objectFit(this.img.ratio > 0 ? ImageFit.Fill : ImageFit.Contain)
+        .aspectRatio(this.img.ratio > 0 ? this.img.ratio : this.placeholderWRatio)
+        .backgroundColor(this.img.ratio > 0 ? Color.Transparent : '#2E2E33')
+        .onComplete((event) => {
+          if (event && event.width > 0 && event.height > 0 && this.img.ratio <= 0) {
+            const r: number = event.width / event.height;
+            this.img.ratio = r;
+            this.onImageRatio(r);
+          }
+        })
+        .onError(() => {
+          this.onImageError();
+        })
+    }
   }
 }
 
@@ -150,6 +179,8 @@ struct ComicReaderPage {
   @State seekValue: number = 0;
   /** 未解码页面的占位宽高比（宽/高），随首图解码结果自适应（条漫/横幅） */
   @State placeholderWRatio: number = DEFAULT_PAGE_W_RATIO;
+  /** 列表内容宽度（px）：页高按整像素对齐，拼接处无缝隙也无重叠 */
+  @State readerWidthPx: number = 0;
   /** 章节目录抽屉 */
   @State drawerOpen: boolean = false;
   /** 目录排序：true 正序，false 倒序 */
@@ -1208,11 +1239,12 @@ struct ComicReaderPage {
           .justifyContent(FlexAlign.Center)
         } else {
           List({ scroller: this.scroller, space: 0 }) {
-            LazyForEach(this.pagesDs, (img: ReaderPageImage, index: number) => {
+            LazyForEach(this.pagesDs, (img: ReaderPageImage) => {
               ListItem() {
                 ReaderImageItem({
                   img: img,
                   placeholderWRatio: this.placeholderWRatio,
+                  itemWidthPx: this.readerWidthPx,
                   onImageRatio: (r: number) => {
                     this.updatePlaceholderRatio(r);
                   },
@@ -1221,9 +1253,6 @@ struct ComicReaderPage {
                   }
                 })
               }
-              // 相邻页向上叠 1vp：列表项高度为小数像素、各自取整后拼接处
-              // 会露出 1px 页面底色缝（图片间黑线），叠压将其盖住
-              .margin({ top: index > 0 ? -1 : 0 })
             }, (img: ReaderPageImage): string => img.key)
           }
           .width('100%')
@@ -1321,6 +1350,13 @@ struct ComicReaderPage {
       .height('100%')
       .backgroundColor('#222222')
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+      .onAreaChange((oldArea: Area, newArea: Area) => {
+        // 列表内容宽度（px）：页高按整像素对齐用，首帧即确定
+        const w: Length = newArea.width;
+        if (typeof w === 'number' && w > 0) {
+          this.readerWidthPx = Math.round(w * vp2px(1));
+        }
+      })
       .bindSheet($$this.autoSheetVisible, this.autoScrollPanel(), {
         height: 280,
         dragBar: true,
