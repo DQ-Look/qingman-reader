@@ -16,7 +16,7 @@ import { Book } from '../model/BookModels';
 import { StorageKeys } from '../model/ReadConfigModels';
 import { Db } from '../service/Db';
 import {
-  BaseGestureHandlingProposal, GestureHandlingResolution, SmartGestureController
+  BaseGestureHandlingProposal, GestureHandlingResolution, SmartGestureController, window
 } from '@kit.ArkUI';
 
 const ENTRY_CHROME_HINT_MS: number = 3000;
@@ -779,13 +779,70 @@ struct ComicReaderPage {
     return '第' + ep.episodeNum + '话';
   }
 
-  /** 气泡跟随滑块：OutSet 上下各留 10vp 边距，按比例折算并夹紧 */
+  /** 气泡跟随滑块：上下各留边距，按比例折算并夹紧 */
   drawerBubbleY(): number {
     const max: number = Math.max(this.episodes.length - 1, 0);
     const fraction: number = max > 0 ? this.drawerSliderIndex / max : 0;
     const h: number = this.drawerSliderAreaHeight;
-    const y: number = 12 + fraction * Math.max(h - 24, 0) - 14;
+    const y: number = 14 + fraction * Math.max(h - 28, 0) - 14;
     return Math.min(Math.max(y, 0), Math.max(h - 30, 0));
+  }
+
+  /** 滑块手柄高度（vp） */
+  private drawerThumbH(): number {
+    return 44;
+  }
+
+  /** 滑块手柄中心 Y（相对轨道区） */
+  private drawerThumbY(): number {
+    const max: number = Math.max(this.episodes.length - 1, 0);
+    const fraction: number = max > 0 ? this.drawerSliderIndex / max : 0;
+    const h: number = this.drawerSliderAreaHeight;
+    const thumbH: number = this.drawerThumbH();
+    return fraction * Math.max(h - thumbH, 0);
+  }
+
+  /** 触摸轨道区 → 折算显示序列索引并滚动定位 */
+  private drawerSliderFromTouch(y: number): void {
+    const max: number = Math.max(this.episodes.length - 1, 0);
+    const h: number = this.drawerSliderAreaHeight;
+    const thumbH: number = this.drawerThumbH();
+    const usable: number = Math.max(h - thumbH, 0);
+    const frac: number = usable > 0 ? (y - thumbH / 2) / usable : 0;
+    const idx: number = Math.min(Math.max(Math.round(frac * max), 0), max);
+    this.drawerSliderIndex = idx;
+    this.drawerSliderActive = true;
+    this.drawerScroller.scrollToIndex(idx, false);
+  }
+
+  /** 可拖动的滑块（滚动条手柄）：细轨道 + 圆角手柄，拖动即滚动章节列表 */
+  @Builder
+  drawerSlider() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      Column()
+        .width(3)
+        .height('100%')
+        .borderRadius(3)
+        .backgroundColor('#EDEDF2')
+        .alignSelf(ItemAlign.Center)
+      Column()
+        .width(22)
+        .height(this.drawerThumbH())
+        .borderRadius(11)
+        .backgroundColor(this.drawerSliderActive ? '#6C5CE7' : '#C9BEF0')
+        .position({ x: 3, y: this.drawerThumbY() })
+    }
+    .width(28)
+    .height('100%')
+    .alignSelf(ItemAlign.End)
+    .position({ x: this.drawerSliderAreaWidth - 28, y: 0 })
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down || event.type === TouchType.Move) {
+        this.drawerSliderFromTouch(event.touches[0].y);
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.drawerSliderActive = false;
+      }
+    })
   }
 
   toggleDrawerSort(): void {
@@ -848,9 +905,11 @@ struct ComicReaderPage {
     this.smartGesture = controller;
     controller.enableSmartTapAndSlideGestures(true);
     controller.registerMonitor(this.smartGestureMonitor);
+    this.setStatusBarVisible(false);
   }
 
   aboutToDisappear(): void {
+    this.setStatusBarVisible(true);
     this.smartGesture?.unregisterMonitor(this.smartGestureMonitor);
     this.smartGesture?.enableSmartTapAndSlideGestures(false);
     this.smartGesture = undefined;
@@ -863,6 +922,18 @@ struct ComicReaderPage {
   sliderMax(): number {
     const count: number = this.episodePageCount(this.currentIndex);
     return count > 0 ? count - 1 : 1;
+  }
+
+  /** 进入阅读器隐藏状态栏（通知图标等），退出恢复 */
+  private setStatusBarVisible(visible: boolean): void {
+    try {
+      window.getLastWindow(getContext(this)).then((win: window.Window) => {
+        win.setSpecificSystemBarEnabled('status', visible).catch(() => {
+        });
+      }).catch(() => {
+      });
+    } catch (err) {
+    }
   }
 
   progressText(): string {
@@ -931,7 +1002,7 @@ struct ComicReaderPage {
         })
     }
     .width('100%')
-    .padding({ top: this.statusBarVp + 6, bottom: 10, left: 14, right: 14 })
+    .padding({ top: Math.max(this.statusBarVp, 20) + 6, bottom: 10, left: 14, right: 14 })
     .backgroundColor('#99000000')
     .alignItems(VerticalAlign.Center)
   }
@@ -992,6 +1063,7 @@ struct ComicReaderPage {
         Text('目录')
           .fontSize(13)
           .fontColor('#FFFFFF')
+          .padding({ left: 12, right: 12, top: 8, bottom: 8 })
           .onClick(() => {
             this.openDrawer();
           })
@@ -1061,7 +1133,16 @@ struct ComicReaderPage {
           List({ scroller: this.drawerScroller, space: 0 }) {
             ForEach(this.drawerEpisodes(), (ep: ComicEpisode) => {
               ListItem() {
-                Row({ space: 8 }) {
+                Row({ space: 10 }) {
+                  Text(ep.episodeNum.toString())
+                    .fontSize(12)
+                    .fontColor(this.episodeIndexOf(ep) === this.currentIndex ? '#FFFFFF' : '#999999')
+                    .fontWeight(FontWeight.Medium)
+                    .width(22)
+                    .height(22)
+                    .borderRadius(11)
+                    .textAlign(TextAlign.Center)
+                    .backgroundColor(this.episodeIndexOf(ep) === this.currentIndex ? '#6C5CE7' : '#F2F2F5')
                   Text(this.episodeLabel(ep))
                     .fontSize(14)
                     .fontColor(this.episodeIndexOf(ep) === this.currentIndex ? '#6C5CE7' : '#333333')
@@ -1073,12 +1154,12 @@ struct ComicReaderPage {
                       .fontSize(10)
                       .fontColor('#6C5CE7')
                       .padding({ left: 6, right: 6, top: 2, bottom: 2 })
-                      .backgroundColor('#F0EDFF')
+                      .backgroundColor('#E3DDFF')
                       .borderRadius(8)
                   }
                 }
                 .width('100%')
-                .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+                .padding({ left: 12, right: 12, top: 11, bottom: 11 })
                 .onClick(() => {
                   this.closeDrawer();
                   const index: number = this.episodeIndexOf(ep);
@@ -1087,38 +1168,20 @@ struct ComicReaderPage {
                   }
                 })
               }
+              .margin({ left: 14, right: 14, top: 4, bottom: 4 })
+              .borderRadius(10)
+              .backgroundColor(this.episodeIndexOf(ep) === this.currentIndex ? '#F0EDFF' : '#FFFFFF')
             }, (ep: ComicEpisode): string => ep.episodeId + '_' + this.drawerAscending)
           }
           .height('100%')
           .width('100%')
-          .divider({
-            strokeWidth: 0.5,
-            color: '#F0F0F0',
-            startMargin: 16,
-            endMargin: 16
-          })
-          .scrollBar(BarState.Auto)
+          .scrollBar(BarState.Off)
           .edgeEffect(EdgeEffect.Spring)
           .onAreaChange((_o: Area, n: Area) => {
             this.drawerSliderAreaWidth = Number(n.width);
             this.drawerSliderAreaHeight = Number(n.height);
           })
-          Slider({
-            value: this.drawerSliderIndex,
-            min: 0,
-            max: Math.max(this.episodes.length - 1, 0),
-            step: 1,
-            direction: Axis.Vertical,
-            style: SliderStyle.OutSet
-          })
-          .width(28)
-          .height('100%')
-          .blockColor('#6C5CE7')
-          .trackColor('#E6E6E6')
-          .selectedColor('#6C5CE7')
-          .onChange((value: number, mode: SliderChangeMode) => {
-            this.onDrawerSliderChange(value, mode);
-          })
+          this.drawerSlider()
           if (this.drawerSliderActive) {
             Text(this.drawerSliderBubbleText())
               .fontSize(12)
@@ -1128,7 +1191,7 @@ struct ComicReaderPage {
               .borderRadius(12)
               .padding({ left: 10, right: 10, top: 5, bottom: 5 })
               .position({
-                x: Math.max(this.drawerSliderAreaWidth - 104, 8),
+                x: Math.max(this.drawerSliderAreaWidth - 110, 8),
                 y: this.drawerBubbleY()
               })
           }
@@ -1138,7 +1201,7 @@ struct ComicReaderPage {
       }
       .width('76%')
       .height('100%')
-      .padding({ top: this.statusBarVp, bottom: this.navBarVp })
+      .padding({ top: Math.max(this.statusBarVp, 20), bottom: this.navBarVp })
       .backgroundColor('#FFFFFF')
     }
     .width('100%')
